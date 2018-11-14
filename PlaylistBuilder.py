@@ -1,16 +1,18 @@
-#!python3
+
 
 """
-    Finds and stores upcoming concert details who, where, when.
-    Manage concerts (deletes ones that have already passed)
-    Build playlists
+    Find details about upcoming local concerts.
+
+    Build playlists on Spotify and keep them up todate with upcoming concert schedule.
 """
-
-
 import re
 import os
 import pdb
-import datetime.datetime as dt
+
+from datetime import date
+import pandas as pd
+
+
 from requests import Session
 from bs4 import BeautifulSoup
 
@@ -18,16 +20,54 @@ import spotipy
 import spotipy.util as util
 
 
+
+## TODO
+# When to use these custom Errors
 class AuthorizationError(ValueError):
     pass
-
 
 class ArtistNotFoundError():
     pass
 
+class Manager():
+    """Time Keeper, Record Keeper, Messenger"""
 
-class ConcertManager():
-    """ """
+    def __init__(self):
+         self.today = date.today()
+        #  Smelly???
+
+    def record_data(self, data):
+        "Return dataframe from dictionary of collected data."
+        # Where, When, Who, How Much?
+        # Columns: Venue, Showtime, Artist, Price
+
+        self.df = pd.DataFrame(data)
+
+    def time_keeper(self):
+        "Remove all entries from before today's date."
+        # TODO
+        # Make sure self.df.ShowTime.toordinal() < self.today.toordinal()
+        self.df[self.df.ShowTime < self.today]
+    
+    def messenger(self, auth_token=None, **kwargs):
+        "Set up session with given parameters and return response."
+        # Cases:
+        # No-API - Need kwargs for header info, don't need auth token
+        # API - Don't need kwargs, need Spotify Auth token - Check bad response
+        if auth_token is None:
+            raise AuthorizationError()
+
+        self.session = Session()
+        # TODO
+        # How to get Authorization code
+        # self.session.params = {}
+        # self.session.params['auth_token'] = auth_token
+        # Pass Dictionary as kwargs???
+        return self.session.get(kwargs)
+
+
+class ConcertManager(Manager):
+    """ Reporter, Tracker """
 
     headers = {
         'user-agent': (
@@ -43,22 +83,20 @@ class ConcertManager():
 
         if url in self.links.keys():
             self.url = self.links[url]
-
         else:
             self.url = url
 
-        self.today = dt.datetime.today()
         self.soup = None
         self.response = None
         self.concerts = None
 
-        self.session = Session()
-        # self.session.config['keep_alive'] = False
-
     def get_concert_html(self):
 
-        self.response = self.session.get(
-            self.url, headers=self.headers, stream=True)
+        # self.response = self.session.get(
+        # self.url, headers=self.headers, stream=True)
+        
+        session_dict = {'url':self.url, 'headers':self.headers, 'stream':True}
+        self.response = self.messenger(*session_dict)
         if self.response.ok:
             return self
             # else: return self.response.exception
@@ -83,11 +121,10 @@ class ConcertManager():
             return func(self, str_func, search)
 
         return search_wrapper
-
+    
     def athens(func):
 
         def search_wrapper(self):
-
             search = re.compile("")
 
             def str_func(soup_tag):
@@ -102,13 +139,6 @@ class ConcertManager():
         self.artists = {
             str_func(each) for each in self.soup.findAll(class_=search_func)}
 
-    def write_html_file(self):
-        f_name = self.url[
-            self.url.find('.') + 1:self.url.rfind('.com')].upper()
-        with open(f_name, "w+") as file:
-            file.write(self.response.content)
-        print("{} Data Created".format(f_name))
-
     def __repr__(self):
         return f"ConcertManager({self.url})"
 
@@ -116,12 +146,17 @@ class ConcertManager():
         return f"ConcertManager({self.url})"
 
 
-class PlaylistManager():
+class PlaylistManager(Manager):
+    """Judge, Sorter
+     """
 
-    username = os.environ['SPOTIPY_CLIENT_ID']
-    client_id = os.environ['SPOTIPY_CLIENT_SECRET']
-    client_secret = os.environ['SPOTIPY_REDIRECT_URI']
-    redirect_uri = 'http://google.com/'
+    # TODO Get API Keys again
+
+    username = os.environ['SPOTIPY_USERNAME']
+    client_id = os.environ['SPOTIPY_CLIENT_ID']
+    client_secret = os.environ['SPOTIPY_CLIENT_SECRET']
+    redirect_uri = os.environ['SPOTIPY_REDIRECT_URI']
+    # scope = os.environ['SPOTIPY_SCOPE']
     scope = 'playlist-read-private playlist-modify-private'
 
     def __init__(self, concert_manager=None):
@@ -173,7 +208,7 @@ class PlaylistManager():
         kwargs = {'q': f'{category}: {item}', 'type': category}
         return self.catch(self.sp.search, kwargs)
 
-    def chec_for_duplicate(self):
+    def check_for_duplicate(self):
         pass
 
     def get_top_tracks(self, num_songs=10):
@@ -189,10 +224,10 @@ class PlaylistManager():
 
         self.sp.user_playlist_add_tracks(self.username, self.ply_id, uris)
 
-    def get_album():
+    def get_album(self):
         pass
 
-    def clear_playlist(sp, user, playlist_id=None):
+    def clear_playlist(self, sp, user, playlist_id=None):
         playlist_tracks = sp.user_playlist_tracks(user, playlist_id)
         sp.user_playlist_remove_all_occurrences_of_tracks(
             user, playlist_id, playlist_tracks, snapshot_id=None)
@@ -209,20 +244,20 @@ class PlaylistManager():
         return str_list[-1]
 
 
-def main():
+# def main():
+#     print('Test')
+#     # band_link = 'https://www.musicmidtown.com/lineup/interactive/'
+#     # new_concerts = ConcertManager(url=band_link).get_concert_html()
+#     # new_concerts.get_concert_soup().search()
 
-    band_link = 'https://www.musicmidtown.com/lineup/interactive/'
-    new_concerts = ConcertManager(url=band_link).get_concert_html()
-    new_concerts.get_concert_soup().search()
-
-    ply_manager = PlaylistManager(new_concerts)
-    pdb.set_trace()
-    ply_manager.authenticate_spotify()
-    ply_manager.get_playlists()
-    ply_manager.get_playlist_id("Music Midtown 2018")
-    ply_manager.get_artist_ids()
-    ply_manager.add_top_five_songs()
+#     # ply_manager = PlaylistManager(new_concerts)
+#     # pdb.set_trace()
+#     # ply_manager.authenticate_spotify()
+#     # ply_manager.get_playlists()
+#     # ply_manager.get_playlist_id("Music Midtown 2018")
+#     # ply_manager.get_artist_ids()
+#     # ply_manager.add_top_five_songs()
 
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()
