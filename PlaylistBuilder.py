@@ -3,7 +3,7 @@
 """
     Find details about upcoming local concerts.
 
-    Build playlists on Spotify and keep them up todate with upcoming concert schedule.
+    Build playlists on Spotify and keep them up to date with upcoming concert schedule.
 """
 import re
 import os
@@ -30,11 +30,42 @@ class ArtistNotFoundError():
     pass
 
 class Manager():
-    """Time Keeper, Record Keeper, Messenger"""
+    """"""
 
-    def __init__(self):
-         self.today = date.today()
-        #  Smelly???
+    def __init__(self, **kwargs):
+
+        self.today = date.today()
+
+        self.session = None
+        self.session_params = kwargs
+       
+    def start_session(self, auth_tokens=None):
+        "auth_tokens - tuple"
+        if auth_tokens is not None:
+            with Session() as s:
+                self.session = s
+                self.session.auth = auth_tokens
+                self.session.headers.update(self.session_params)
+                return self    
+        else:
+            raise AuthorizationError()
+
+        def recv_message(self, url):
+        " Return response form website"
+        # Cases:
+        # No-API - Need kwargs for header info, don't need auth token
+        # API - Don't need kwargs, need Spotify Auth token - Check bad response
+        # TODO
+        # How to get Authorization code
+        # self.session.params = {}
+        # self.session.params['auth_token'] = auth_token
+        # Pass Dictionary as kwargs???
+
+        if self.session is not None:
+            return self.session.get(url)
+        else:
+            raise AuthorizationError()
+        
 
     def record_data(self, data):
         "Return dataframe from dictionary of collected data."
@@ -42,30 +73,17 @@ class Manager():
         # Columns: Venue, Showtime, Artist, Price
 
         self.df = pd.DataFrame(data)
+        return self
 
-    def time_keeper(self):
+    def keep_time(self):
         "Remove all entries from before today's date."
         # TODO
         # Make sure self.df.ShowTime.toordinal() < self.today.toordinal()
         self.df[self.df.ShowTime < self.today]
-    
-    def messenger(self, auth_token=None, **kwargs):
-        "Set up session with given parameters and return response."
-        # Cases:
-        # No-API - Need kwargs for header info, don't need auth token
-        # API - Don't need kwargs, need Spotify Auth token - Check bad response
-        if auth_token is None:
-            raise AuthorizationError()
-
-        self.session = Session()
-        # TODO
-        # How to get Authorization code
-        # self.session.params = {}
-        # self.session.params['auth_token'] = auth_token
-        # Pass Dictionary as kwargs???
-        return self.session.get(kwargs)
+        return self
 
 
+        
 class ConcertManager(Manager):
     """ Reporter, Tracker """
 
@@ -74,17 +92,23 @@ class ConcertManager(Manager):
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
             'AppleWebKit/537.36 (KHTML, like Gecko)'
             'Chrome/68.0.3440.106 Safari/537.36')}
-
     links = {
         'Athens': 'http://www.flagpole.com/events/live-music',
         'Music Midtown': 'https://www.musicmidtown.com/lineup/interactive/'}
 
     def __init__(self, url=None):
 
+# Smelly
         if url in self.links.keys():
             self.url = self.links[url]
         else:
+            # raise url not found exception, but keep going
             self.url = url
+
+        session_dict = {'url':self.url, 'headers':self.headers, 'stream':True}
+        super().__init__(session_dict)
+
+        self.response = super().start_session().recv_message()
 
         self.soup = None
         self.response = None
@@ -95,8 +119,7 @@ class ConcertManager(Manager):
         # self.response = self.session.get(
         # self.url, headers=self.headers, stream=True)
         
-        session_dict = {'url':self.url, 'headers':self.headers, 'stream':True}
-        self.response = self.messenger(*session_dict)
+
         if self.response.ok:
             return self
             # else: return self.response.exception
@@ -109,35 +132,35 @@ class ConcertManager(Manager):
         else:
             return None
 
-    def midtown(func):
+    # def midtown(func):
 
-        def search_wrapper(self):
-            search = re.compile('c-lineup__caption-text js-view-details'
-                                ' js-lineup__caption-text ')
+    #     def search_wrapper(self):
+    #         search = re.compile('c-lineup__caption-text js-view-details'
+    #                             ' js-lineup__caption-text ')
 
-            def str_func(soup_tag):
-                return ' '.join(soup_tag.text.split())
+    #         def str_func(soup_tag):
+    #             return ' '.join(soup_tag.text.split())
 
-            return func(self, str_func, search)
+    #         return func(self, str_func, search)
 
-        return search_wrapper
+    #     return search_wrapper
     
-    def athens(func):
+    # def athens(func):
 
-        def search_wrapper(self):
-            search = re.compile("")
+    #     def search_wrapper(self):
+    #         search = re.compile("")
 
-            def str_func(soup_tag):
-                return ' '.join(soup_tag.text.split())
+    #         def str_func(soup_tag):
+    #             return ' '.join(soup_tag.text.split())
 
-            return func(self, str_func, search)
+    #         return func(self, str_func, search)
 
-        return search_wrapper
+    #     return search_wrapper
 
-    @midtown
-    def search(self, str_func, search_func):
-        self.artists = {
-            str_func(each) for each in self.soup.findAll(class_=search_func)}
+    # @midtown
+    # # def search(self, str_func, search_func):
+    #     self.artists = {
+    #         str_func(each) for each in self.soup.findAll(class_=search_func)}
 
     def __repr__(self):
         return f"ConcertManager({self.url})"
