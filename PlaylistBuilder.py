@@ -19,39 +19,45 @@ from bs4 import BeautifulSoup
 import spotipy
 import spotipy.util as util
 
-
-
-## TODO
-# When to use these custom Errors
-class AuthorizationError(ValueError):
+class AuthorizationError(Exception):
     pass
-
-class ArtistNotFoundError():
+class ConcertNotFoundError(Exception):
+    pass
+class ArtistNotFoundError(Exception):
     pass
 
 class Manager():
     """"""
-
-    def __init__(self, **kwargs):
+    def __init__(self, url=None, **kwargs):
+        ""
 
         self.today = date.today()
-
+        self.url = url
         self.session = None
-        self.session_params = kwargs
-       
-    def start_session(self, auth_tokens=None):
-        "auth_tokens - tuple"
-        if auth_tokens is not None:
-            with Session() as s:
-                self.session = s
-                self.session.auth = auth_tokens
-                self.session.headers.update(self.session_params)
-                return self    
-        else:
-            raise AuthorizationError()
+        self.params = kwargs
 
-        def recv_message(self, url):
-        " Return response form website"
+       
+    def start_session(self):
+        """
+        Set up setttion with autorization tokens
+        and session paramaters.
+
+        @param auth_tokens - tuple
+        """
+
+        self.session = Session()
+        return self
+
+    def authenticate(self, auth_tokens=None):
+        "Add Authentication and update headers."
+
+        self.session.auth = auth_tokens
+        self.session.headers.update(self.params)
+        return self
+
+
+    def recv_message(self):
+        " Return response from website"
         # Cases:
         # No-API - Need kwargs for header info, don't need auth token
         # API - Don't need kwargs, need Spotify Auth token - Check bad response
@@ -60,13 +66,13 @@ class Manager():
         # self.session.params = {}
         # self.session.params['auth_token'] = auth_token
         # Pass Dictionary as kwargs???
-
+        # 'http://www.flagpole.com/events/live-music'()
         if self.session is not None:
-            return self.session.get(url)
-        else:
-            raise AuthorizationError()
-        
-
+            try:
+                return self.session.get(self.url)
+            except Exception as e:
+                raise AuthorizationError(e)
+            
     def record_data(self, data):
         "Return dataframe from dictionary of collected data."
         # Where, When, Who, How Much?
@@ -92,23 +98,25 @@ class ConcertManager(Manager):
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
             'AppleWebKit/537.36 (KHTML, like Gecko)'
             'Chrome/68.0.3440.106 Safari/537.36')}
+
+# Existing Concert Sources
     links = {
         'Athens': 'http://www.flagpole.com/events/live-music',
         'Music Midtown': 'https://www.musicmidtown.com/lineup/interactive/'}
 
-    def __init__(self, url=None):
+    def __init__(self, concerts=None):
 
-# Smelly
-        if url in self.links.keys():
-            self.url = self.links[url]
-        else:
-            # raise url not found exception, but keep going
-            self.url = url
+        if concerts in self.links.keys():
+            try:
+                self.url = self.links[concerts]
+            except Exception as e:
+                raise ConcertNotFoundError(e)
+            finally:
+            # raise Concerts not found exception, but keep going
+                self.url = concerts
 
         session_dict = {'url':self.url, 'headers':self.headers, 'stream':True}
         super().__init__(session_dict)
-
-        self.response = super().start_session().recv_message()
 
         self.soup = None
         self.response = None
@@ -119,15 +127,19 @@ class ConcertManager(Manager):
         # self.response = self.session.get(
         # self.url, headers=self.headers, stream=True)
         
-
-        if self.response.ok:
+        self.response = super().start_session().recv_message()
+        if self.url is not None:
             return self
+
+        # .recv_message()
+        # if self.response.ok:
+        #     return self
             # else: return self.response.exception
 
     def get_concert_soup(self):
 
         if hasattr(self, 'response'):
-            self.soup = BeautifulSoup(self.response.content, 'lxml')
+            # self.soup = BeautifulSoup(self.response.content, 'lxml')
             return self
         else:
             return None
@@ -256,7 +268,6 @@ class PlaylistManager(Manager):
             user, playlist_id, playlist_tracks, snapshot_id=None)
 
     def catch(self, func, kwargs, handle=None):
-        # pdb.set_trace()
         try:
             return func(**kwargs)
         except Exception as e:

@@ -3,8 +3,10 @@
 # except ModuleNotFoundError:
 #     import tests.context
 
-import PlaylistBuilder
-# from PlaylistBuilder import BeautifulSoup
+import os
+from PlaylistBuilder import Manager, ConcertManager, PlaylistManager
+# from PlaylistBuilder import BeautifulSoup - Patch
+from PlaylistBuilder import AuthorizationError, ArtistNotFoundError
 
 from betamax import Betamax
 from betamax_serializers import pretty_json
@@ -13,39 +15,83 @@ from betamax_serializers import pretty_json
 import unittest
 from unittest.mock import patch, PropertyMock
 
-import os
+## Authorization Info
 
-## Get Authorization Info
-api_token = os.environ.get('SPOTIFY_TOKEN')
-Betamax.register_serializer(pretty_json.PrettyJSONSerializer)
+token_list = ['SPOTIPY_CLIENT_ID', 'SPOTIPY_CLIENT_SECRET',
+    'SPOTIPY_REDIRECT_URI', 'SPOTIPY_USERNAME']
+api_dict = [os.environ.get(_) for _ in token_list]
 
-with Betamax.configure() as config:
-	
-    config.cassette_library_dir = 'fixtures/cassettes''C:\\Users\\TheoI\\Anaconda3\\python'
-    config.default_cassette_options['serialize_with'] = 'prettyjson'
-    config.define_cassette_placeholder('<AUTH_TOKEN>', api_token)
+# Betamax.register_serializer(pretty_json.PrettyJSONSerializer)
+# with Betamax.configure() as config:
+#     config.cassette_library_dir = 'fixtures/cassettes''C:\\Users\\TheoI\\Anaconda3\\python'
+#     config.default_cassette_options['serialize_with'] = 'prettyjson'
+#     config.define_cassette_placeholder('<AUTH_TOKEN>', api_token)
 
 class ManagerTestCase(unittest.TestCase):
     """
-    Tests for ConcertManager Class
+    Tests for Base Manager Class
 
     """
 
     def setUp(self):
-        self.new_manager = PlaylistBuilder.Manager()
-        # self.recorder = Betamax(self.new_manager.session)
+        # self.new_manager = Manager(url='http://www.google.com'
+        self.new_manager = Manager(url='http://www.flagpole.com/events/live-music')
+        self.new_manager.start_session()
+        self.recorder = Betamax(self.new_manager.session)
 
-    def test_keep_time(self):
-        # TODO mock object with times
-        self.assertIsNotNone(self.new_manager.today)
+    def tearDown(self):
+        self.new_manager.session.close()
 
+    def test_recv_message_case1(self):
+        "Case1: Good Response"
+        #TODO response
+
+        response = self.new_manager.recv_message()
+        self.assertTrue(response.ok)
+
+    def test_recv_message_case2(self):
+        "Case2: Bad Response"
+        pass
+
+    def test_start_session_case1(self):
+        "Case1: Session Exists"
+        self.assertIsNotNone(self.new_manager.session)
+
+    def test_start_session_case2(self):
+        "Case2: Session Authentication"
+        # print(f'\n{self.new_manager.session.headers}')
+        
+        self.assertListEqual(self.new_manager.session.auth, api_dict)
+
+    def test_start_session_case3(self):
+        "Case3: Error Handling"
+        ## Response Status code
+        self.assertRaises(AuthorizationError)
+
+    #TODO Mock Data with timestamps
     def test_record_data(self):
         #TODO mock dictionary
         pass
     
-    def test_recv_message(self):
-        #TODO mock auth token
+    def test_keep_time_case1(self):
+        "Case1: today attribute exists"
+
+        # TODO mock object with times
+        # print(f'\n{self.new_manager.today}')
+        self.assertIsNotNone(self.new_manager.today)
+    
+    def test_keep_time_case2(self):
+        "Case2: Expired data."
+        
         pass
+        # self.assertGreater()
+
+    def test_keep_time_case3(self):
+        "Case3: all data up to date."
+        #TODO Mock Data with timestamps
+        pass
+    
+
 
 # # Unit Tests with subclasses???
 # class ConcertManagerTestCase(unittest.TestCase):
