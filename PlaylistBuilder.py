@@ -1,5 +1,3 @@
-
-
 """
     Find details about upcoming local concerts.
 
@@ -22,56 +20,38 @@ import spotipy.util as util
 class AuthorizationError(Exception):
     pass
 class ConcertNotFoundError(Exception):
+    """City Not supported."""
     pass
 class ArtistNotFoundError(Exception):
     pass
 
-class Manager():
+class Manager:
     """"""
-    def __init__(self, url=None, **kwargs):
+    def __init__(self, **kwargs):
         ""
 
         self.today = date.today()
-        self.url = url
         self.session = None
-        self.params = kwargs
+        # super().__init__(**kwargs)
 
        
     def start_session(self):
         """
-        Set up setttion with autorization tokens
-        and session paramaters.
+        Create Session object
 
-        @param auth_tokens - tuple
         """
 
         self.session = Session()
         return self
 
-    def authenticate(self, auth_tokens=None):
-        "Add Authentication and update headers."
-
-        self.session.auth = auth_tokens
-        self.session.headers.update(self.params)
-        return self
-
-
-    def recv_message(self):
+    def get_response(self, url, **kwargs):
         " Return response from website"
-        # Cases:
-        # No-API - Need kwargs for header info, don't need auth token
-        # API - Don't need kwargs, need Spotify Auth token - Check bad response
-        # TODO
-        # How to get Authorization code
-        # self.session.params = {}
-        # self.session.params['auth_token'] = auth_token
-        # Pass Dictionary as kwargs???
-        # 'http://www.flagpole.com/events/live-music'()
+     
         if self.session is not None:
             try:
-                return self.session.get(self.url)
+                return self.session.get(url, **kwargs)
             except Exception as e:
-                raise AuthorizationError(e)
+                raise e
             
     def record_data(self, data):
         "Return dataframe from dictionary of collected data."
@@ -88,8 +68,6 @@ class Manager():
         self.df[self.df.ShowTime < self.today]
         return self
 
-
-        
 class ConcertManager(Manager):
     """ Reporter, Tracker """
 
@@ -104,88 +82,100 @@ class ConcertManager(Manager):
         'Athens': 'http://www.flagpole.com/events/live-music',
         'Music Midtown': 'https://www.musicmidtown.com/lineup/interactive/'}
 
-    def __init__(self, concerts=None):
+    def __init__(self, concert=None, **kwargs):
 
-        if concerts in self.links.keys():
-            try:
-                self.url = self.links[concerts]
-            except Exception as e:
-                raise ConcertNotFoundError(e)
-            finally:
-            # raise Concerts not found exception, but keep going
-                self.url = concerts
-
-        session_dict = {'url':self.url, 'headers':self.headers, 'stream':True}
-        super().__init__(session_dict)
-
+        self.url = None
         self.soup = None
         self.response = None
-        self.concerts = None
+        self.concert = concert
 
-    def get_concert_html(self):
+        try:
+            self.url = self.links[concert]
+        except Exception as e:
+            raise ConcertNotFoundError(e)
 
+        super().__init__(**kwargs)
+  
+    def start_session(self):
+
+        super().start_session()
+        self.session.headers.update(self.headers)
+        return self
+
+    def get_response(self):
+
+        params = {'stream':True}
         # self.response = self.session.get(
         # self.url, headers=self.headers, stream=True)
         
-        self.response = super().start_session().recv_message()
-        if self.url is not None:
-            return self
-
-        # .recv_message()
-        # if self.response.ok:
-        #     return self
-            # else: return self.response.exception
+        self.response = super().get_response(self.url, **params)
 
     def get_concert_soup(self):
 
         if hasattr(self, 'response'):
-            # self.soup = BeautifulSoup(self.response.content, 'lxml')
+            self.soup = BeautifulSoup(self.response.content, 'lxml')
             return self
         else:
             return None
-
-    # def midtown(func):
-
-    #     def search_wrapper(self):
-    #         search = re.compile('c-lineup__caption-text js-view-details'
-    #                             ' js-lineup__caption-text ')
-
-    #         def str_func(soup_tag):
-    #             return ' '.join(soup_tag.text.split())
-
-    #         return func(self, str_func, search)
-
-    #     return search_wrapper
     
-    # def athens(func):
+    def athens_concerts(self):
+        "Return Dictionary of upcoming concerts in Athens, GA"
 
-    #     def search_wrapper(self):
-    #         search = re.compile("")
+        events = self.soup.find(class_='event-list').findAll('h2')
+        concert_dict = {}
+        for e in events:
+            date = e.text
+            event_count = e.findNext('p')
+            concert_dict[date]= {'Event Count':event_count.text}
+            venues = e.findNext('ul').findAll('h4')
+            
+            for v in venues:
+                info = v.findNext('p')
+                bands = info.fetchNextSiblings()
+                names = [each.strong.text.replace('\xa0', '')
+                        for each in bands if each.strong]
+                concert_dict[date][v.text] = {'Info':info.text, 'Artists':names}
 
-    #         def str_func(soup_tag):
-    #             return ' '.join(soup_tag.text.split())
+        return concert_dict
 
-    #         return func(self, str_func, search)
 
-    #     return search_wrapper
+#     @midtown
+#     def search(self, search_func):
+#         self.artists = {
+#             ' '.join(each.text.split())
+#             for each in self.soup.findAll(class_=search_func)}
 
-    # @midtown
-    # # def search(self, str_func, search_func):
-    #     self.artists = {
-    #         str_func(each) for each in self.soup.findAll(class_=search_func)}
+#     def __repr__(self):
+#         return f"ConcertManager({self.url})"
 
-    def __repr__(self):
-        return f"ConcertManager({self.url})"
+#     def __str__(self):
+#         return f"ConcertManager({self.url})"
 
-    def __str__(self):
-        return f"ConcertManager({self.url})"
+# def midtown(f):
 
+#     def wrapper(*args, **kwargs):
+#         search = re.compile('c-lineup__caption-text js-view-details'
+#                             ' js-lineup__caption-text ')
+
+#         return f(search)
+
+#     return wrapper
+
+# def athens(func):
+
+#     def wrapper(self):
+#         search = re.compile("")
+
+#         def str_func(soup_tag):
+#             return ' '.join(soup_tag.text.split())
+
+#         return func(self, str_func, search)
+
+#     return wrapper
 
 class PlaylistManager(Manager):
     """Judge, Sorter
      """
-
-    # TODO Get API Keys again
 
     username = os.environ['SPOTIPY_USERNAME']
     client_id = os.environ['SPOTIPY_CLIENT_ID']
@@ -194,16 +184,16 @@ class PlaylistManager(Manager):
     # scope = os.environ['SPOTIPY_SCOPE']
     scope = 'playlist-read-private playlist-modify-private'
 
-    def __init__(self, concert_manager=None):
+    def __init__(self, artists=None, **kwargs):
 
-        self.artists = concert_manager.artists
-        self.session = Session()
+        self.artists = artists
         self.sp = None
-
         self.token = None
         self.usr_playlists = None
         self.artist_ids = None
         self.ply_id = None
+
+        super().__init__(**kwargs)
 
 # Use cached_token if available
     def authenticate_spotify(self):

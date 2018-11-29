@@ -5,7 +5,6 @@
 
 import os
 from PlaylistBuilder import Manager, ConcertManager, PlaylistManager
-# from PlaylistBuilder import BeautifulSoup - Patch
 from PlaylistBuilder import AuthorizationError, ArtistNotFoundError
 
 from betamax import Betamax
@@ -28,27 +27,24 @@ api_dict = [os.environ.get(_) for _ in token_list]
 #     config.define_cassette_placeholder('<AUTH_TOKEN>', api_token)
 
 class ManagerTestCase(unittest.TestCase):
-    """
-    Tests for Base Manager Class
-
-    """
+    """Tests for Base Manager Class"""
 
     def setUp(self):
-        # self.new_manager = Manager(url='http://www.google.com'
-        self.new_manager = Manager(url='http://www.flagpole.com/events/live-music')
+        self.new_manager = Manager()
         self.new_manager.start_session()
-        self.recorder = Betamax(self.new_manager.session)
+        # self.recorder = Betamax(self.new_manager.session)
 
     def tearDown(self):
         self.new_manager.session.close()
 
-    def test_recv_message_case1(self):
+    def test_get_response_case1(self):
         "Case1: Good Response"
         #TODO response
-
-        response = self.new_manager.recv_message()
+        url =  'https://stackoverflow.com/questions/15115328/python-requests-no-connection-adapters'
+        response = self.new_manager.get_response(url)
         self.assertTrue(response.ok)
 
+ 
     def test_recv_message_case2(self):
         "Case2: Bad Response"
         pass
@@ -59,7 +55,6 @@ class ManagerTestCase(unittest.TestCase):
 
     def test_start_session_case2(self):
         "Case2: Session Authentication"
-        # print(f'\n{self.new_manager.session.headers}')
         
         self.assertListEqual(self.new_manager.session.auth, api_dict)
 
@@ -92,45 +87,67 @@ class ManagerTestCase(unittest.TestCase):
         pass
     
 
+class ConcertManagerTestCase(unittest.TestCase):
+    """
+    Tests for ConcertManager Class
 
-# # Unit Tests with subclasses???
-# class ConcertManagerTestCase(unittest.TestCase):
-#     """
-#     Tests for ConcertManager Class
-
-#     """
-
-#     def setUp(self):
-#         self.new_concerts = PlaylistBuilder.ConcertManager(url='Music Midtown')
-#         self.recorder = Betamax(self.new_concerts.session)
+    """
+    
+    def setUp(self):
+        self.new_concerts = ConcertManager(concert='Athens')
+        self.new_concerts.start_session()
+        # self.recorder = Betamax(self.new_concerts.session)
         
-#     def tearDown(self):
-#         self.new_concerts.session.close()
+    def tearDown(self):
+        self.new_concerts.session.close()
 
-#     def test_concert_response(self):
-#         with self.recorder.use_cassette(cassette_name='Concert Cassete', serialize_with='prettyjson', record='new_episodes'):
-#             self.new_concerts.get_concert_html()
+    def test_start_session_case1(self):
+        self.assertIsNotNone(self.new_concerts.session)
 
-#         # print(type(self.new_concerts.response))
-#         self.assertIsNotNone(self.new_concerts.response)
-#         # self.assertIsInstance(self.new_concerts.response, PlaylistBuilder.requests.models.Response)
+    def test_start_session_case2(self):
+        self.assertEquals(self.new_concerts.session.headers, self.new_concerts.headers)
+    
+    def test_concert_found(self):
+        self.assertEqual(self.new_concerts.url, 'http://www.flagpole.com/events/live-music')
 
-#     def test_concert_soup(self):
-#         with self.recorder.use_cassette(cassette_name='Concert Cassete', serialize_with='prettyjson', record='new_episodes'):
-#             self.new_concerts.get_concert_html()
-#             self.new_concerts.get_concert_soup()
+    def test_get_response_case1(self):
+        self.new_concerts.get_response()
 
-#         self.assertIsNotNone(self.new_concerts.soup)
-#         self.assertIsInstance(self.new_concerts.soup, PlaylistBuilder.BeautifulSoup)
+        self.assertIsNotNone(self.new_concerts.get_response)
+    
+
+    # def test_concert_response(self):
+    #     with self.recorder.use_cassette(cassette_name='Concert Cassete', serialize_with='prettyjson', record='new_episodes'):
+    #         self.new_concerts.get_concert_html()
+
+    #     # print(type(self.new_concerts.response))
+    #     self.assertIsNotNone(self.new_concerts.response)
+    #     # self.assertIsInstance(self.new_concerts.response, PlaylistBuilder.requests.models.Response)
+
+    def test_concert_soup(self):
+        # with self.recorder.use_cassette(cassette_name='Concert Cassete', serialize_with='prettyjson', record='new_episodes'):
+        #     self.new_concerts.get_concert_html()
+        #     self.new_concerts.get_concert_soup()
+        self.new_concerts.get_response()
+        self.new_concerts.get_concert_soup()
+        self.assertIsNotNone(self.new_concerts.soup)
+        self.assertIsInstance(self.new_concerts.soup, PlaylistBuilder.BeautifulSoup)
+    
+    def test_athens_concerts(self):
+        self.new_concerts.get_response()
+        self.new_concerts.get_concert_soup()
+        concerts = self.new_concerts.athens_concerts()
+
+        self.assertIsInstance(concerts, dict)
 
 
-#     def test_find_artists(self):
-#         with self.recorder.use_cassette(cassette_name='Concert Cassete', serialize_with='prettyjson', record='new_episodes'):
-#             self.new_concerts.get_concert_html()
-#             self.new_concerts.get_concert_soup()
-#             # self.new_concerts.search()
+    # def test_find_artists(self):
+    #     with self.recorder.use_cassette(cassette_name='Concert Cassete', serialize_with='prettyjson', record='new_episodes'):
+    #         self.new_concerts.get_concert_html()
+    #         self.new_concerts.get_concert_soup()
+            # self.new_concerts.search()
 
-#         # self.assertIs(type(self.new_concerts.artists), set)
+        # self.assertIs(type(self.new_concerts.artists), set)
 
 
 

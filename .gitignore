@@ -2,5 +2,5 @@
 __pycache__
 pyvenv.txt
 *.cfg
-Scripts
-Lib
+Sublime Settings
+*.json
