@@ -4,7 +4,8 @@
 #     import tests.context
 
 import os
-from PlaylistBuilder import Manager, ConcertManager, PlaylistManager
+
+from PlaylistBuilder import Manager, ConcertManager, PlaylistManager, BeautifulSoup
 from PlaylistBuilder import AuthorizationError, ArtistNotFoundError
 
 from betamax import Betamax
@@ -16,15 +17,11 @@ from unittest.mock import patch, PropertyMock
 
 ## Authorization Info
 
-token_list = ['SPOTIPY_CLIENT_ID', 'SPOTIPY_CLIENT_SECRET',
-    'SPOTIPY_REDIRECT_URI', 'SPOTIPY_USERNAME']
-api_dict = [os.environ.get(_) for _ in token_list]
-
-# Betamax.register_serializer(pretty_json.PrettyJSONSerializer)
-# with Betamax.configure() as config:
-#     config.cassette_library_dir = 'fixtures/cassettes''C:\\Users\\TheoI\\Anaconda3\\python'
-#     config.default_cassette_options['serialize_with'] = 'prettyjson'
-#     config.define_cassette_placeholder('<AUTH_TOKEN>', api_token)
+Betamax.register_serializer(pretty_json.PrettyJSONSerializer)
+with Betamax.configure() as config:
+    config.cassette_library_dir = 'tests/fixtures/cassettes'
+    config.default_cassette_options['serialize_with'] = 'prettyjson'
+    # config.define_cassette_placeholder('<AUTH_TOKEN>', api_token)
 
 class ManagerTestCase(unittest.TestCase):
     """Tests for Base Manager Class"""
@@ -44,7 +41,6 @@ class ManagerTestCase(unittest.TestCase):
         response = self.new_manager.get_response(url)
         self.assertTrue(response.ok)
 
- 
     def test_recv_message_case2(self):
         "Case2: Bad Response"
         pass
@@ -52,11 +48,6 @@ class ManagerTestCase(unittest.TestCase):
     def test_start_session_case1(self):
         "Case1: Session Exists"
         self.assertIsNotNone(self.new_manager.session)
-
-    def test_start_session_case2(self):
-        "Case2: Session Authentication"
-        
-        self.assertListEqual(self.new_manager.session.auth, api_dict)
 
     def test_start_session_case3(self):
         "Case3: Error Handling"
@@ -96,25 +87,46 @@ class ConcertManagerTestCase(unittest.TestCase):
     def setUp(self):
         self.new_concerts = ConcertManager(concert='Athens')
         self.new_concerts.start_session()
-        # self.recorder = Betamax(self.new_concerts.session)
-        
+
     def tearDown(self):
         self.new_concerts.session.close()
-
+    
     def test_start_session_case1(self):
-        self.assertIsNotNone(self.new_concerts.session)
+        "Session Started"
+
+        recorder = Betamax(self.new_concerts.session)
+
+        with recorder.use_cassette('arist-ids',
+                                serialize_with='prettyjson',
+                              record='new_episodes'):
+
+            self.new_concerts.get_response()
+            self.assertIsNotNone(self.new_concerts.session)
+            self.assertEqual(self.new_concerts.response.ok, True)
 
     def test_start_session_case2(self):
-        self.assertEquals(self.new_concerts.session.headers, self.new_concerts.headers)
+        "Case2: Session Authentication"
+        # self.assertListEqual(self.new_concerts.session.auth, self.api_dict)
+        pass
     
     def test_concert_found(self):
-        self.assertEqual(self.new_concerts.url, 'http://www.flagpole.com/events/live-music')
+        "Test if website is known"
+
+        recorder = Betamax(self.new_concerts.session)
+        with recorder.use_cassette('arist-ids',
+                                serialize_with='prettyjson',
+                              record='new_episodes'):
+            self.new_concerts.get_response()
+            self.new_concerts.get_concert_soup()
+            self.assertEqual(self.new_concerts.url, 'http://www.flagpole.com/events/live-music')
 
     def test_get_response_case1(self):
         self.new_concerts.get_response()
-
         self.assertIsNotNone(self.new_concerts.get_response)
+
+        # with be
     
+
 
     # def test_concert_response(self):
     #     with self.recorder.use_cassette(cassette_name='Concert Cassete', serialize_with='prettyjson', record='new_episodes'):
@@ -131,7 +143,7 @@ class ConcertManagerTestCase(unittest.TestCase):
         self.new_concerts.get_response()
         self.new_concerts.get_concert_soup()
         self.assertIsNotNone(self.new_concerts.soup)
-        self.assertIsInstance(self.new_concerts.soup, PlaylistBuilder.BeautifulSoup)
+        self.assertIsInstance(self.new_concerts.soup, BeautifulSoup)
     
     def test_athens_concerts(self):
         self.new_concerts.get_response()
