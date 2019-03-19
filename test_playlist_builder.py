@@ -5,8 +5,8 @@
 
 import os
 
-from PlaylistBuilder import Manager, ConcertManager, PlaylistManager, BeautifulSoup
-from PlaylistBuilder import AuthorizationError, ArtistNotFoundError
+from PlaylistBuilder import Manager, ConcertManager, PlaylistManager
+from PlaylistBuilder import AuthorizationError, ArtistNotFoundError, BeautifulSoup
 
 from betamax import Betamax
 from betamax_serializers import pretty_json
@@ -15,7 +15,7 @@ from betamax_serializers import pretty_json
 import unittest
 from unittest.mock import patch, PropertyMock
 
-## Authorization Info
+## Authorization Infos
 
 Betamax.register_serializer(pretty_json.PrettyJSONSerializer)
 with Betamax.configure() as config:
@@ -85,7 +85,7 @@ class ConcertManagerTestCase(unittest.TestCase):
     """
     
     def setUp(self):
-        self.new_concerts = ConcertManager(concert='Athens')
+        self.new_concerts = ConcertManager(concert='Bonnaroo')
         self.new_concerts.start_session()
 
     def tearDown(self):
@@ -110,22 +110,37 @@ class ConcertManagerTestCase(unittest.TestCase):
         pass
     
     def test_concert_found(self):
-        "Test if website is known"
+        "Website Crawler exists"
+        #TODO choose randomly from list,
+        ## Check Null condition
 
         recorder = Betamax(self.new_concerts.session)
-        with recorder.use_cassette('arist-ids',
+        with recorder.use_cassette('bonnaroo',
                                 serialize_with='prettyjson',
                               record='new_episodes'):
             self.new_concerts.get_response()
             self.new_concerts.get_concert_soup()
-            self.assertEqual(self.new_concerts.url, 'http://www.flagpole.com/events/live-music')
+            # self.assertEqual(self.new_concerts.url, 'http://www.flagpole.com/events/live-music')
+            self.assertEqual(self.new_concerts.url, 'https://www.bonnaroo.com/lineup/interactive/')
+
+    def test_bonnaroo_lineup(self):
+        "Returns bonnaroo lineup"
+        #TODO choose randomly from list,
+        ## Check Null condition
+
+        recorder = Betamax(self.new_concerts.session)
+        with recorder.use_cassette('bonnaroo',
+                                serialize_with='prettyjson',
+                              record='new_episodes'):
+            self.new_concerts.get_response()
+            self.new_concerts.get_concert_soup()
+            self.new_concerts.bonnaroo_lineup()
+            self.assertEqual(len(self.new_concerts.lineup), 106)
+           
 
     def test_get_response_case1(self):
         self.new_concerts.get_response()
         self.assertIsNotNone(self.new_concerts.get_response)
-
-        # with be
-    
 
 
     # def test_concert_response(self):
@@ -151,6 +166,17 @@ class ConcertManagerTestCase(unittest.TestCase):
         concerts = self.new_concerts.athens_concerts()
 
         self.assertIsInstance(concerts, dict)
+    
+    def test_bonnaroo(self):
+        
+        recorder = Betamax(self.new_concerts.session)
+        with recorder.use_cassette('bonnaroo',
+                                serialize_with='prettyjson',
+                              record='new_episodes'):
+            self.new_concerts.get_response()
+            self.new_concerts.get_concert_soup()
+            self.assertEqual(self.new_concerts.url, 'https://www.bonnaroo.com/lineup/interactive/')
+        
 
 
     # def test_find_artists(self):
