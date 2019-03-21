@@ -6,7 +6,8 @@
 import os
 
 from PlaylistBuilder import Manager, ConcertManager, PlaylistManager
-from PlaylistBuilder import AuthorizationError, ArtistNotFoundError, BeautifulSoup
+from PlaylistBuilder import AuthorizationError, ArtistNotFoundError, BeautifulSoup, spotipy
+# import PlaylistBuilder
 
 from betamax import Betamax
 from betamax_serializers import pretty_json
@@ -76,16 +77,15 @@ class ManagerTestCase(unittest.TestCase):
         "Case3: all data up to date."
         #TODO Mock Data with timestamps
         pass
-    
 
 class ConcertManagerTestCase(unittest.TestCase):
     """
-    Tests for ConcertManager Class
+    ConcertManager Tests
 
     """
     
     def setUp(self):
-        self.new_concerts = ConcertManager(concert='Bonnaroo')
+        self.new_concerts = ConcertManager()
         self.new_concerts.start_session()
 
     def tearDown(self):
@@ -113,7 +113,7 @@ class ConcertManagerTestCase(unittest.TestCase):
         "Website Crawler exists"
         #TODO choose randomly from list,
         ## Check Null condition
-
+        ## broken right now
         recorder = Betamax(self.new_concerts.session)
         with recorder.use_cassette('bonnaroo',
                                 serialize_with='prettyjson',
@@ -122,12 +122,12 @@ class ConcertManagerTestCase(unittest.TestCase):
             self.new_concerts.get_concert_soup()
             # self.assertEqual(self.new_concerts.url, 'http://www.flagpole.com/events/live-music')
             self.assertEqual(self.new_concerts.url, 'https://www.bonnaroo.com/lineup/interactive/')
+            # ONLY TESTS WHETHER CONCERTMANAGER HAS CORRECT URL ATTRIBUTE
 
     def test_bonnaroo_lineup(self):
-        "Returns bonnaroo lineup"
-        #TODO choose randomly from list,
-        ## Check Null condition
+        "Returns list of artists in bonnaroo lineup of correct length (106)"
 
+        self.new_concerts.concert
         recorder = Betamax(self.new_concerts.session)
         with recorder.use_cassette('bonnaroo',
                                 serialize_with='prettyjson',
@@ -136,38 +136,47 @@ class ConcertManagerTestCase(unittest.TestCase):
             self.new_concerts.get_concert_soup()
             self.new_concerts.bonnaroo_lineup()
             self.assertEqual(len(self.new_concerts.lineup), 106)
-           
 
     def test_get_response_case1(self):
-        self.new_concerts.get_response()
-        self.assertIsNotNone(self.new_concerts.get_response)
 
+        recorder = Betamax(self.new_concerts.session)
+        with recorder.use_cassette('RESPONSE',
+                                serialize_with='prettyjson',
+                              record='new_episodes'):
 
-    # def test_concert_response(self):
-    #     with self.recorder.use_cassette(cassette_name='Concert Cassete', serialize_with='prettyjson', record='new_episodes'):
-    #         self.new_concerts.get_concert_html()
-
-    #     # print(type(self.new_concerts.response))
-    #     self.assertIsNotNone(self.new_concerts.response)
-    #     # self.assertIsInstance(self.new_concerts.response, PlaylistBuilder.requests.models.Response)
+            self.new_concerts.get_response()
+            self.assertIsNotNone(self.new_concerts.response)
+            print(self.new_concerts.response.text)
 
     def test_concert_soup(self):
-        # with self.recorder.use_cassette(cassette_name='Concert Cassete', serialize_with='prettyjson', record='new_episodes'):
-        #     self.new_concerts.get_concert_html()
-        #     self.new_concerts.get_concert_soup()
-        self.new_concerts.get_response()
-        self.new_concerts.get_concert_soup()
-        self.assertIsNotNone(self.new_concerts.soup)
-        self.assertIsInstance(self.new_concerts.soup, BeautifulSoup)
+        recorder = Betamax(self.new_concerts.session)
+        with recorder.use_cassette(cassette_name='Concerts',
+                    serialize_with='prettyjson', record='new_episodes'):
+            self.new_concerts.get_response()
+            self.new_concerts.get_concert_soup()
+            self.assertIsNotNone(self.new_concerts.soup)
+            self.assertIsInstance(self.new_concerts.soup, BeautifulSoup)
     
     def test_athens_concerts(self):
-        self.new_concerts.get_response()
-        self.new_concerts.get_concert_soup()
-        concerts = self.new_concerts.athens_concerts()
+        "Test scraping functionality for Athens concerts"
 
-        self.assertIsInstance(concerts, dict)
+        concert = ConcertManager(concert='Athens')
+        concert.start_session()
+        recorder = Betamax(concert.session)
+        with recorder.use_cassette('athens',
+                                serialize_with='prettyjson',
+                              record='new_episodes'):
+            concert.get_response()
+            concert.get_concert_soup()
+            concerts = concert.athens_concerts()
+
+            self.assertIsInstance(concerts, dict)
     
-    def test_bonnaroo(self):
+    def test_athens_lineup(self):
+        pass
+
+    
+    def test_bonnaroo_lineup(self):
         
         recorder = Betamax(self.new_concerts.session)
         with recorder.use_cassette('bonnaroo',
@@ -176,7 +185,20 @@ class ConcertManagerTestCase(unittest.TestCase):
             self.new_concerts.get_response()
             self.new_concerts.get_concert_soup()
             self.assertEqual(self.new_concerts.url, 'https://www.bonnaroo.com/lineup/interactive/')
+
+            self.new_concerts.get_concert_soup()
+            concerts = self.new_concerts.athens_concerts()
+
+            self.assertIsInstance(concerts, dict)
         
+
+    # def test_concert_response(self):
+    #     with self.recorder.use_cassette(cassette_name='Concert Cassete', serialize_with='prettyjson', record='new_episodes'):
+    #         self.new_concerts.get_concert_html()
+
+    #     # print(type(self.new_concerts.response))
+    #     self.assertIsNotNone(self.new_concerts.response)
+    #     # self.assertIsInstance(self.new_concerts.response, PlaylistBuilder.requests.models.Response)
 
 
     # def test_find_artists(self):
@@ -187,57 +209,51 @@ class ConcertManagerTestCase(unittest.TestCase):
 
         # self.assertIs(type(self.new_concerts.artists), set)
 
-
-
-# #          User authentication requires interaction with your
-# #             web browser. Once you enter your credentials and
-# #             give authorization, you will be redirected to
-# #             a url.  Paste that url you were directed to to
-# #             complete the authorization.
-
         
-# # Opened https://accounts.spotify.com/authorize?client_id=c6eb3116302b4a34bc648de103980ca4&response_type=code&redirect_uri=http%3A%2F%2Fgoogle.com%2F&scope=playlist-modify-private+playlist-read-private in your browser
+class PlaylistManagerTestCase(unittest.TestCase):
 
-# # Enter the URL you were redirected to: https://www.google.com/?code=AQAT5GSlpgKnXQxNlJRcVrjQDEcjq-qdYu1e0Wum7C7lQE3mApGgAH-093ZcV9hTYihmO4Iewkfi812bNCwIn-i4Lv9FuuFfRlN7htiU2bT5vRCFyJvriDRZ-fE6fokiE1_8oyi_U9b6MGHT4mPqOQXPPPuQWNI3lkTKjToufExUOuHpB0OLTtuRPgen7O1jL-cMYJhHi-t5aG-oeMhEnab86fIqn-85YjRdYmw3hDMBjHPZC-PWWg
-
-
-
-# class PlaylistManagerTestCase(unittest.TestCase):
-
-#     @patch('PlaylistBuilder.ConcertManager')
-#     def setUp(self, mock_concerts):
-#         mock_concerts.return_value.artists = {'First Aid Kit', 'Gucci Mane', \
-#                                              'Imagine Dragons', 'Fall Out Boy', 'Post Malone'}
+    def setUp(self):
         
-#         concert = PlaylistBuilder.ConcertManager(url='Music.com')
-#         self.ply_manager = PlaylistBuilder.PlaylistManager(concert)
-#         Betamax.register_serializer(pretty_json.PrettyJSONSerializer)
-#         self.recorder = Betamax(self.ply_manager.session)
+        con_manager = ConcertManager(concert='Athens')
+        self.ply_manager = PlaylistManager(con_manager)
+        self.ply_manager.start_session()
 
-#     def tearDown(self):
-#         self.ply_manager.session.close()
+        Betamax.register_serializer(pretty_json.PrettyJSONSerializer)
+        self.recorder = Betamax(self.ply_manager.session)
 
-#     def test_authenticate_spotify(self):
-         
-#         with self.recorder.use_cassette(cassette_name='Spotify Cassete', serialize_with='prettyjson'):
-#             self.ply_manager.authenticate_spotify()
+    def tearDown(self):
+        self.ply_manager.session.close()
 
-#             # print(type(self.ply_manager.sp))
+    def test_authenticate_spotify(self):
 
-#         self.assertIsNotNone(self.ply_manager.sp)
-#         self.assertIsInstance(self.ply_manager.sp, PlaylistBuilder.spotipy.client.Spotify)
+        with self.recorder.use_cassette(cassette_name='spotify', serialize_with='prettyjson'):
+             self.ply_manager.authenticate_spotify()
+             self.assertIsNotNone(self.ply_manager.sp)
+             self.assertIsInstance(self.ply_manager.sp, spotipy.client.Spotify)
 
-#     # @unittest.skip('')
-#     def test_get_playlists(self):
+    def test_get_playlists(self):
+        "Returns list of user playlist names"
         
-#         with self.recorder.use_cassette(cassette_name='Playlist Cassete', serialize_with='prettyjson'):
-#             self.ply_manager.authenticate_spotify()
-#             self.ply_manager.get_playlists()
+        with self.recorder.use_cassette(cassette_name='Playlist Cassete',
+            serialize_with='prettyjson'):
+            self.ply_manager.authenticate_spotify()
+            self.ply_manager.get_playlists()
 
-#         # print(type(self.ply_manager.usr_playlists))
-#         # print(self.ply_manager.usr_playlists.keys())
-#         self.assertIs(type(self.ply_manager.usr_playlists), dict)
-#             # self.AssertEqual(,'')
+            self.assertIs(type(self.ply_manager.usr_playlists), dict)
+            self.assertIsNotNone(self.ply_manager.usr_playlists)
+
+    def test_get_playlist_id(self):
+
+        ply_name = "Music Midtown"
+        with self.recorder.use_cassette(cassette_name='Playlist Cassete',
+            serialize_with='prettyjson'):
+            self.ply_manager.authenticate_spotify()
+            self.ply_manager.get_playlists()
+            self.ply_manager.get_playlist_id(name=ply_name)
+
+            self.assertIsNotNone(self.ply_manager.ply_id)
+
+            
 
 #     # @unittest.skip('')
 #     def test_get_playlist_id(self):
@@ -275,21 +291,15 @@ if __name__ == '__main__':
     # ply_suite = unittest.TestLoader().loadTestsFromTestCase(PlaylistManagerTestCase)
     # unittest.TextTestRunner(verbosity=2).run(ply_suite)
 
-
     # def tearDownClass(cls):
     #     pass
     #     # print('Cleaning up Playlist Tests')
 
     # @classmethod
-
-    #     # print(f'\n\n===PlaylistManager Results===\n\nArtist IDs: {cls.manager.artist_ids}\n\n')
-    #     # print(f'\n\nUser Playlists: {cls.manager.usr_playlists}')
-    
-
+    #print(f'\n\n===PlaylistManager Results===\n\nArtist IDs: {cls.manager.artist_ids}\n\n')
+    #print(f'\n\nUser Playlists: {cls.manager.usr_playlists}')
     
     # def test_authenticate_spotify(self):
-
-
     #     self.mock_spotify
     #     self.ply_manager.authenticate_spotify()
 
@@ -304,24 +314,20 @@ if __name__ == '__main__':
     # def test_get_playlists(self, mock_user_ply):
 
     #     mock_user_ply.return_value = ['Athens', 'Music Midtown', 'Atlanta']
-
     #     self.manager.get_playlists()
     #     self.assertIsNotNone(self.manager.usr_playlists)
     #     self.assertEqual(mock_user_ply(), self.manager.usr_playlists) #Could be sorted differently
 
-    
     # @patch('PlaylistBuilder.PlaylistManager', spec=PlaylistBuilder.PlaylistManager)
     # def test_get_playlist_id(self, mock_manager):
 
     #         ply_name = 'Music Midtown'
-
     #         print(mock_manager.username.return_value)       
             # print(self.manager.usr_playlists)
             # print(dir(self.manager))
-        
             # self.manager.get_playlist_id(ply_name)
-            # self.assertIsNotNone(self.manager.ply_id, msg='Playlist Not Found')# Attribute Error
-
+            # self.assertIsNotNone(self.manager.ply_id, msg='Playlist Not Found')
+            # Attribute Error
             # self.assertIn(ply_name, self.manager.usr_playlists())
 
 # *** IndexError: list index out of range
@@ -333,24 +339,15 @@ if __name__ == '__main__':
     # @unittest.skip('Not Ready')
     # def test_get_artist_ids(self):
 
-    
     #     self.manager.get_artist_ids()
     #     self.assertIsNotNone(self.manager.artist_ids)
         # self.assert
 
-
-
 ## Needs a PlaylistManager Object with mocked attributes
-
 # username
 # ply_id
 # artist_ids
-
-
 ## New Mock Object
-
-
-
 ## Existing object
 ## Patch attributes into set up class
 
@@ -375,18 +372,9 @@ if __name__ == '__main__':
         # # mocked_manager.ply_id = 'TEST'
         # ply_obj.artist_ids = ['spotify:artist:53XhwfbYqKCa1cC15pYq2q', 'spotify:artist:13y7CgLHjMVRMDqxdx0Xdo',\
         #                                 'spotify:artist:4UXqAaa6dQYAk18Lv7PEgX', 'spotify:artist:246dkjvS1zLTtiykXe5h60', \
-        #                                 'spotify:artist:21egYD1eInY6bGFcniCRT1']
-
-                                                
+        #                                 'spotify:artist:21egYD1eInY6bGFcniCRT1']                                             
                 # print(real, {real.play_id.return_value})
-
-
-
-
             # real = PlaylistBuilder.PlaylistManager()
-
-
-
             ## Duplicate tracks
             # self.manager.
 

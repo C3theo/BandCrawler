@@ -26,6 +26,7 @@ class ArtistNotFoundError(Exception):
 
 class Manager:
     """ Manage sessions, responses, data storage, and remove expired data.
+        kwargs: headers??? what else??
     """
     def __init__(self, **kwargs):
         ""
@@ -85,12 +86,10 @@ class ConcertManager(Manager):
     def __init__(self, concert=None, **kwargs):
         
         self.concert = concert
-        self.url = None
         self.soup = None
         self.response = None
         self.lineup = None
         
-
         try:
             self.url = self.links[concert]
         except Exception as e:
@@ -102,13 +101,10 @@ class ConcertManager(Manager):
 
         super().start_session()
         self.session.headers.update(self.headers)
-        return self
 
     def get_response(self):
 
         params = {'stream':True}
-        # self.response = self.session.get(
-        # self.url, headers=self.headers, stream=True)
         
         self.response = super().get_response(self.url, **params)
 
@@ -116,13 +112,11 @@ class ConcertManager(Manager):
 
         if hasattr(self, 'response'):
             self.soup = BeautifulSoup(self.response.content, 'lxml')
-            return self
         else:
             return None
-    
-    ## store concert info before processing
+
     def athens_concerts(self):
-        """Return Dictionary of upcoming concerts in Athens, GA"""
+        """Return Dictionary of upcoming concert info in Athens, GA"""
 
         events = self.soup.find(class_='event-list').findAll('h2')
         concert_dict = {}
@@ -143,19 +137,28 @@ class ConcertManager(Manager):
 
         return concert_dict
 
+    def athens_lineup(self, concert_dict):
+        "Return list of artists playing in Athens, GA"
+
+        lineup = [concert_dict[each][i]['Artists'] 
+            for each in concert_dict 
+            for i in concert_dict[each] 
+            if i != 'Event Count']
+
+        self.lineup = [i 
+            for each in lineup
+            for i in each
+            if i.lower() != 'open mic']
+
     def coachella_lineup(self):
-        """Return list of artists playing at Coachella 2018"""
+        "Return list of artists playing at Coachella 2018."
         pass
 
     def bonnaroo_lineup(self):
-        """Return list of artists playing at Bonnaroo 2019
-            For creating playlists
-        """
+        "Return list of artists playing at Bonnaroo 2019."
 
         events = self.soup.findAll(class_="c-lineup__caption-text js-view-details js-lineup__caption-text ")
         self.lineup = [e.text.strip() for e in events]
-
-        return self
 
 
 # #     @midtown
@@ -197,22 +200,28 @@ class PlaylistManager(Manager):
     username = os.environ['SPOTIPY_USERNAME']
     client_id = os.environ['SPOTIPY_CLIENT_ID']
     client_secret = os.environ['SPOTIPY_CLIENT_SECRET']
-    redirect_uri = os.environ['SPOTIPY_REDIRECT_URI']
-    # scope = os.environ['SPOTIPY_SCOPE']
     scope = 'playlist-read-private playlist-modify-private'
+    redirect_uri = 'http://locallhost.com/?'
 
-    def __init__(self, artists=None, **kwargs):
+    def __init__(self, name=None, artists=None, **kwargs):
 
-        self.artists = artists
+        self.new_artists = artists
+        self.ply_name = name
         self.sp = None
         self.token = None
         self.usr_playlists = None
         self.artist_ids = None
         self.ply_id = None
-
+    
         super().__init__(**kwargs)
 
+    def start_session(self):
+        
+        super().start_session()
+        return self
+
 # Use cached_token if available
+# automate web browser/copy paste redirect link
     def authenticate_spotify(self):
 
         self.token = util.prompt_for_user_token(
@@ -224,24 +233,35 @@ class PlaylistManager(Manager):
             return self
         else:
             raise(AuthorizationError(self.token))
+    
+    def create_playlist(self):
+        if self.ply_name is None:
+            raise Exception('Playlist does not exist')
+        else:
+            self.sp.user_playlist_create(self.username, self.ply_name)
+
 
     def get_playlists(self):
+        "Return list of user playlist names."
 
-        self.usr_playlists = self.sp.current_user_playlists(limit=50)
+        self.usr_playlists = self.sp.current_user_playlists()
         return self
 
     def get_playlist_id(self, name=None):
+        'Return uri of specified user playlists'
 
         for each in self.usr_playlists['items']:
             if each['name'] == name:
                 self.ply_id = self.get_uri(each["uri"])
+                print(self.ply_id)
                 return self
+            else:
+                raise Exception()
 
     def get_artist_ids(self):
-
         self.artist_ids = [
             self.find_artist_info('artist', each)['artists']['items'][0]['uri']
-            for each in self.artists]
+            for each in self.new_artists]
         return self
 
 # spotipy.client.SpotifyException: http status: 400, code:-1 - https://api.spotify.com/v1/search?q=artist%3AThe+Revivalists&limit=10&offset=0&type=type
@@ -285,7 +305,14 @@ class PlaylistManager(Manager):
         return str_list[-1]
 
 
-# def main():
+def main():
+    con_manager = ConcertManager(concert='Athens')
+    ply_manager = PlaylistManager(con_manager)
+    ply_manager.start_session()
+    ply_manager.authenticate_spotify()
+    ply_manager.get_playlists()
+    ply_manager.get_playlist_id(name='Cole')
+
 #     print('Test')
 #     # band_link = 'https://www.musicmidtown.com/lineup/interactive/'
 #     # new_concerts = ConcertManager(url=band_link).get_concert_html()
@@ -300,5 +327,5 @@ class PlaylistManager(Manager):
 #     # ply_manager.add_top_five_songs()
 
 
-# if __name__ == '__main__':
-#     main()
+if __name__ == '__main__':
+    main()

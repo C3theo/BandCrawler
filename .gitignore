@@ -4,3 +4,4 @@ pyvenv.txt
 *.cfg
 Sublime Settings
 *.json
+*.ipynb
