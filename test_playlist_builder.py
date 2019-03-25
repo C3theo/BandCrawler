@@ -11,12 +11,9 @@ from PlaylistBuilder import AuthorizationError, ArtistNotFoundError, BeautifulSo
 
 from betamax import Betamax
 from betamax_serializers import pretty_json
-# from betamax.fixtures
 
 import unittest
 from unittest.mock import patch, PropertyMock
-
-## Authorization Infos
 
 Betamax.register_serializer(pretty_json.PrettyJSONSerializer)
 with Betamax.configure() as config:
@@ -30,21 +27,22 @@ class ManagerTestCase(unittest.TestCase):
     def setUp(self):
         self.new_manager = Manager()
         self.new_manager.start_session()
-        # self.recorder = Betamax(self.new_manager.session)
 
     def tearDown(self):
         self.new_manager.session.close()
 
     def test_get_response_case1(self):
         "Case1: Good Response"
-        #TODO response
+
         url =  'https://stackoverflow.com/questions/15115328/python-requests-no-connection-adapters'
         response = self.new_manager.get_response(url)
         self.assertTrue(response.ok)
 
     def test_recv_message_case2(self):
         "Case2: Bad Response"
-        pass
+        url =  'BAD SITE'
+        response = self.new_manager.get_response(url)
+        self.assertFalse(response.ok)
 
     def test_start_session_case1(self):
         "Case1: Session Exists"
@@ -124,19 +122,6 @@ class ConcertManagerTestCase(unittest.TestCase):
             self.assertEqual(self.new_concerts.url, 'https://www.bonnaroo.com/lineup/interactive/')
             # ONLY TESTS WHETHER CONCERTMANAGER HAS CORRECT URL ATTRIBUTE
 
-    def test_bonnaroo_lineup(self):
-        "Returns list of artists in bonnaroo lineup of correct length (106)"
-
-        self.new_concerts.concert
-        recorder = Betamax(self.new_concerts.session)
-        with recorder.use_cassette('bonnaroo',
-                                serialize_with='prettyjson',
-                              record='new_episodes'):
-            self.new_concerts.get_response()
-            self.new_concerts.get_concert_soup()
-            self.new_concerts.bonnaroo_lineup()
-            self.assertEqual(len(self.new_concerts.lineup), 106)
-
     def test_get_response_case1(self):
 
         recorder = Betamax(self.new_concerts.session)
@@ -146,7 +131,6 @@ class ConcertManagerTestCase(unittest.TestCase):
 
             self.new_concerts.get_response()
             self.assertIsNotNone(self.new_concerts.response)
-            print(self.new_concerts.response.text)
 
     def test_concert_soup(self):
         recorder = Betamax(self.new_concerts.session)

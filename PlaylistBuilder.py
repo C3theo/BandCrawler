@@ -26,20 +26,15 @@ class ArtistNotFoundError(Exception):
 
 class Manager:
     """ Manage sessions, responses, data storage, and remove expired data.
-        kwargs: headers??? what else??
     """
     def __init__(self, **kwargs):
-        ""
 
         self.today = datetime.today()
         self.session = None
         # super().__init__(**kwargs)
     
     def start_session(self):
-        """
-        Create Session object
-
-        """
+        """ Create Session object """
 
         self.session = Session()
         return self
@@ -61,13 +56,6 @@ class Manager:
         self.df = pd.DataFrame(data)
         return self
 
-    def keep_time(self):
-        """Remove all entries from before today's date."""
-        # TODO
-        # Make sure self.df.ShowTime.toordinal() < self.today.toordinal()
-        self.df[self.df.ShowTime < self.today]
-        return self
-
 class ConcertManager(Manager):
     """ Reporter, Tracker """
 
@@ -83,29 +71,81 @@ class ConcertManager(Manager):
         'Music Midtown': 'https://www.musicmidtown.com/lineup/interactive/',
         'Bonnaroo':'https://www.bonnaroo.com/lineup/interactive/'}
 
-    def __init__(self, concert=None, **kwargs):
+    def __init__(self, where=None, **kwargs):
         
-        self.concert = concert
+        self.where = where
         self.soup = None
         self.response = None
         self.lineup = None
         
         try:
-            self.url = self.links[concert]
+            self.url = self.links[where]
         except Exception as e:
             raise ConcertNotFoundError(e)
 
         super().__init__(**kwargs)
   
+
+    def record_data(self, data):
+        """Return dataframe from dictionary of collected concert data."""
+        
+        # Where, When, Who, How Much?
+        # Columns: Venue, Showtime, Artist, Price
+        # Stores All Data
+        # Not really necessary if just trying to keep track of artists in playlist
+
+        labels = ['Venue', 'Artists', 'Price']
+        conc_df = pd.DataFrame()
+        
+        for date in data:
+            concerts = data[date]['Shows']
+            df = pd.DataFrame(data=concerts) 
+            
+            tuples = list(zip([date] * 3, list(labels)))
+            index = pd.MultiIndex.from_tuples(tuples, names=['Date', 'Details'])
+            df.columns = index
+            
+            conc_df = pd.concat([conc_df, df], axis=1)
+                       
+        return conc_df
+    
+    def show_dates(self, data):
+        """Return dataframe of concert dates. For keeping playlist up to date."""
+        ### TODO save different df's at in the beginning with the soup
+        
+        date_artists = []
+        for date, event in data.items():
+            artists = [art for show in event['Shows'] for art in show['Artists']
+               if art.lower() != 'open mic']
+        if artists:
+            date_artists.append({date:artists})
+        
+        conc_df = pd.DataFrame()
+        for show_date in date_artists:
+            df = pd.DataFrame(data=show_date)
+            conc_df = pd.concat(conc_df, df)conc_df = pd.concat([df, conc_df], axis=1)
+        
+        return conc_df
+
+
+        
+    def remove_old_concerts(self):
+        """Remove all entries from before today's date."""
+        # TODO
+        # Make sure self.df.ShowTime.toordinal() < self.today.toordinal()
+        self.df[self.df.ShowTime < self.today]
+    
     def start_session(self):
 
         super().start_session()
         self.session.headers.update(self.headers)
+        return self
 
     def get_response(self):
 
+        # self.response = self.session.get(
+        # self.url, headers=self.headers, stream=True)
         params = {'stream':True}
-        
         self.response = super().get_response(self.url, **params)
 
     def get_concert_soup(self):
@@ -116,49 +156,40 @@ class ConcertManager(Manager):
             return None
 
     def athens_concerts(self):
-        """Return Dictionary of upcoming concert info in Athens, GA"""
+        """Return Dictionary of upcoming concerts in Athens, GA"""
 
         events = self.soup.find(class_='event-list').findAll('h2')
         concert_dict = {}
         for e in events:
             concert_date = e.text
-            concert_date = concert_date + ' 2018'
-            concert_date = datetime.strptime(concert_date, '%A, %B %d %Y')
+            concert_date = concert_date + ' 2019'
+#             concert_date = datetime.strptime(concert_date, '%A, %B %d %Y')
             event_count = e.findNext('p')
-            concert_dict[concert_date]= {'Event Count':event_count.text}
             venues = e.findNext('ul').findAll('h4')
-            
+            concert_dict[concert_date]= {'Event Count':event_count.text}
+            concert_dict[concert_date]['Shows'] = []
             for v in venues:
                 info = v.findNext('p')
                 bands = info.fetchNextSiblings()
                 names = [each.strong.text.replace('\xa0', '')
                         for each in bands if each.strong]
-                concert_dict[concert_date][v.text] = {'Info':info.text, 'Artists':names}
-
+                concert_dict[concert_date]['Shows'].append({'Venue':v.text,
+                                                            'Artists':names,
+                                                            'Price':info.text})
+                
         return concert_dict
 
-    def athens_lineup(self, concert_dict):
-        "Return list of artists playing in Athens, GA"
-
-        lineup = [concert_dict[each][i]['Artists'] 
-            for each in concert_dict 
-            for i in concert_dict[each] 
-            if i != 'Event Count']
-
-        self.lineup = [i 
-            for each in lineup
-            for i in each
-            if i.lower() != 'open mic']
-
     def coachella_lineup(self):
-        "Return list of artists playing at Coachella 2018."
+        """Return list of artists playing at Coachella 2018"""
         pass
 
     def bonnaroo_lineup(self):
-        "Return list of artists playing at Bonnaroo 2019."
-
+        """Return list of artists playing at Bonnaroo 2019"""
+        
         events = self.soup.findAll(class_="c-lineup__caption-text js-view-details js-lineup__caption-text ")
         self.lineup = [e.text.strip() for e in events]
+
+        return self
 
 
 # #     @midtown
@@ -201,7 +232,7 @@ class PlaylistManager(Manager):
     client_id = os.environ['SPOTIPY_CLIENT_ID']
     client_secret = os.environ['SPOTIPY_CLIENT_SECRET']
     scope = 'playlist-read-private playlist-modify-private'
-    redirect_uri = 'http://locallhost.com/?'
+    redirect_uri = 'https://www.google.com/'
 
     def __init__(self, name=None, artists=None, **kwargs):
 
@@ -216,12 +247,11 @@ class PlaylistManager(Manager):
         super().__init__(**kwargs)
 
     def start_session(self):
-        
+
         super().start_session()
         return self
 
 # Use cached_token if available
-# automate web browser/copy paste redirect link
     def authenticate_spotify(self):
 
         self.token = util.prompt_for_user_token(
@@ -242,7 +272,7 @@ class PlaylistManager(Manager):
 
 
     def get_playlists(self):
-        "Return list of user playlist names."
+        "Return list user playlist names."
 
         self.usr_playlists = self.sp.current_user_playlists()
         return self
@@ -253,7 +283,6 @@ class PlaylistManager(Manager):
         for each in self.usr_playlists['items']:
             if each['name'] == name:
                 self.ply_id = self.get_uri(each["uri"])
-                print(self.ply_id)
                 return self
             else:
                 raise Exception()
@@ -305,14 +334,7 @@ class PlaylistManager(Manager):
         return str_list[-1]
 
 
-def main():
-    con_manager = ConcertManager(concert='Athens')
-    ply_manager = PlaylistManager(con_manager)
-    ply_manager.start_session()
-    ply_manager.authenticate_spotify()
-    ply_manager.get_playlists()
-    ply_manager.get_playlist_id(name='Cole')
-
+# def main():
 #     print('Test')
 #     # band_link = 'https://www.musicmidtown.com/lineup/interactive/'
 #     # new_concerts = ConcertManager(url=band_link).get_concert_html()
@@ -327,5 +349,5 @@ def main():
 #     # ply_manager.add_top_five_songs()
 
 
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()
