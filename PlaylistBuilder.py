@@ -6,6 +6,7 @@
 import re
 import os
 import pdb
+from datetime import datetime
 
 from requests import Session
 from bs4 import BeautifulSoup
@@ -13,7 +14,7 @@ from bs4 import BeautifulSoup
 import spotipy
 import spotipy.util as util
 
-from datetime import datetime
+import numpy as np
 import pandas as pd
 
 class AuthorizationError(Exception):
@@ -47,14 +48,7 @@ class Manager:
                 return self.session.get(url, **kwargs)
             except Exception as e:
                 raise e
-            
-    def record_data(self, data):
-        """Return dataframe from dictionary of collected data."""
-        # Where, When, Who, How Much?
-        # Columns: Venue, Showtime, Artist, Price
-
-        self.df = pd.DataFrame(data)
-        return self
+                
 
 class ConcertManager(Manager):
     """ Reporter, Tracker """
@@ -84,56 +78,123 @@ class ConcertManager(Manager):
             raise ConcertNotFoundError(e)
 
         super().__init__(**kwargs)
-  
 
-    def record_data(self, data):
-        """Return dataframe from dictionary of collected concert data."""
-        
-        # Where, When, Who, How Much?
-        # Columns: Venue, Showtime, Artist, Price
-        # Stores All Data
-        # Not really necessary if just trying to keep track of artists in playlist
 
-        labels = ['Venue', 'Artists', 'Price']
-        conc_df = pd.DataFrame()
+    def stage_data(self, data):
+    # create records for each time an artist plays
+        schema = {'Artist':[],
+                'ShowDate':[],
+                'ShowLocaton':[],
+                'ShowInfo':[]}
+
+        for date, events in concerts.items(): 
+            for show in events['Shows']:
+                for artist in show['Artists']:
+                    schema['ShowDate'].append(date)
+                    schema['ShowLocaton'].append(show['ShowLocation'])
+                    schema['ShowInfo'].append(show['ShowInfo'])
+                    schema['Artist'].append(artist)
+
+        df = pd.DataFrame(data=schema)
+        df['SourceRowID'] = df.index
+        df = df[['SourceRowID','Artist', 'ShowDate', 'ShowLocation', 'ShowInfo']]
+        df.loc[['ETLID']] = 1000
         
-        for date in data:
-            concerts = data[date]['Shows']
-            df = pd.DataFrame(data=concerts) 
-            
-            tuples = list(zip([date] * 3, list(labels)))
-            index = pd.MultiIndex.from_tuples(tuples, names=['Date', 'Details'])
-            df.columns = index
-            
-            conc_df = pd.concat([conc_df, df], axis=1)
-                       
-        return conc_df
+        return df
     
-    def show_dates(self, data):
-        """Return dataframe of concert dates. For keeping playlist up to date."""
-        ### TODO save different df's at in the beginning with the soup
-        
-        date_artists = []
-        for date, event in data.items():
-            artists = [art for show in event['Shows'] for art in show['Artists']
-               if art.lower() != 'open mic']
-        if artists:
-            date_artists.append({date:artists})
-        
-        conc_df = pd.DataFrame()
-        for show_date in date_artists:
-            df = pd.DataFrame(data=show_date)
-            conc_df = pd.concat(conc_df, df)conc_df = pd.concat([df, conc_df], axis=1)
-        
-        return conc_df
+    def gate2_df(self, df):
+        """ """
+        ## use prefix function
+        gate2_df = df
+        gate2_df.ShowDate = pd.to_datetime(gate2_df.ShowDate)
+        days =  gate2_df.ShowDate.apply(lambda x: x.day).astype(str)
+        key = gate2_df.index.astype(str)
+        key_df = key + days
+        key_df = key_df.astype(int)
+        gate2_df['ShowKey'] = test
+        gate2_df = gate2_df[['ShowKey', 'SourceRowID', 'ShowDate', 'ShowLocaton', 'ETLID']]
 
 
+
+#     def record_data(self, data):
+#         """Return multi-indexed dataframe of all collected concert data."""
         
-    def remove_old_concerts(self):
-        """Remove all entries from before today's date."""
+#         # Where, When, Who, How Much?
+#         # Columns: Venue, Showtime, Artist, Price
+#         # Stores All Data
+#         # Not really necessary if just trying to keep track of artists in playlist
+
+#         labels = ['Venue', 'Artists', 'Price']
+#         conc_df = pd.DataFrame()
+        
+#         for date in data:
+#             concerts = data[date]['Shows']
+#             df = pd.DataFrame(data=concerts) 
+            
+#             tuples = list(zip([date] * 3, list(labels)))
+#             index = pd.MultiIndex.from_tuples(tuples, names=['Date', 'Details'])
+#             df.columns = index
+            
+#             conc_df = pd.concat([conc_df, df], axis=1)
+                       
+#         return conc_df
+        
+    
+#     def dates_artists(self, data):
+#         """Return dataframe of all artist playing on a certain date."""
+#         ### TODO save different df's at in the beginning with the soup
+        
+#         date_artists = []
+#         for date, event in data.items():
+#             artists = [art for show in event['Shows'] for art in show['Artists']
+#                if art.lower() != 'open mic']
+#         if artists:
+#             date_artists.append({date:artists})
+        
+#         ##TODO: make helper function
+#         da_df = pd.DataFrame()
+#         for show_date in date_artists:
+#             df = pd.DataFrame(data=show_date)
+#             da_df = pd.concat([df, conc_df], axis=1)
+        
+#         return da_df
+    
+#     def artists_df(self, data):
+#         """Return dataframe with artists as row index values and list of all dates."""
+        
+#         # Unique set of Artists
+#         artists = {each for k, v in data.items()
+#                    for show in v['Shows']
+#                    for each in show['Artists']}
+#         artists = sorted(list(artists))
+    
+#         # Lists of aLl Show Dates for each Artist
+#         a_dict = {each:[] for each in artists}
+#         for date, event in data.items():
+#             for show in event['Shows']:
+#                 for artist in show['Artists']:
+#                     a_dict[artist].append(date)
+                    
+#         art = {'Artists' : [each
+#                             for k, v in a_dict.items()
+#                             for each in [k] * len(v)]}
+                    
+#         df_data = {'Artists':list(a_dict.keys()),
+#                    'Dates':list(a_dict.values()),
+#                    'Spotify':False,
+#                    'Future Shows':False}
+#         df = pd.DataFrame(data=df_data)
+#         df = df.astype({'Artists':str,
+#                    'Dates':list,
+#                    'Spotify':bool,
+#                    'Future Shows':bool})
+        
+#         return df
+
+    def update_future_shows(self):
+        """Update column in df if artist has shows within the next 30 days."""
         # TODO
-        # Make sure self.df.ShowTime.toordinal() < self.today.toordinal()
-        self.df[self.df.ShowTime < self.today]
+        
     
     def start_session(self):
 
@@ -156,26 +217,32 @@ class ConcertManager(Manager):
             return None
 
     def athens_concerts(self):
-        """Return Dictionary of upcoming concerts in Athens, GA"""
+        """Return dictionary of upcoming concerts in Athens, GA. From Flagpole website."""
 
         events = self.soup.find(class_='event-list').findAll('h2')
         concert_dict = {}
         for e in events:
+            
             concert_date = e.text
-            concert_date = concert_date + ' 2019'
-#             concert_date = datetime.strptime(concert_date, '%A, %B %d %Y')
+            concert_date =  f'{concert_date} {datetime.today().year}'
+            concert_datetime = datetime.strptime(concert_date, '%A, %B %d %Y')
+            # datetime objects not working as dict keys
+            
             event_count = e.findNext('p')
             venues = e.findNext('ul').findAll('h4')
-            concert_dict[concert_date]= {'Event Count':event_count.text}
+            concert_dict[concert_date]= {'datetime':concert_datetime,
+                                         'Event Count':event_count.text}
+            ## Event Count for Data Audit
             concert_dict[concert_date]['Shows'] = []
+            
             for v in venues:
                 info = v.findNext('p')
                 bands = info.fetchNextSiblings()
                 names = [each.strong.text.replace('\xa0', '')
                         for each in bands if each.strong]
-                concert_dict[concert_date]['Shows'].append({'Venue':v.text,
+                concert_dict[concert_date]['Shows'].append({'ShowLocation':v.text,
                                                             'Artists':names,
-                                                            'Price':info.text})
+                                                            'ShowInfo':info.text})
                 
         return concert_dict
 
@@ -188,8 +255,6 @@ class ConcertManager(Manager):
         
         events = self.soup.findAll(class_="c-lineup__caption-text js-view-details js-lineup__caption-text ")
         self.lineup = [e.text.strip() for e in events]
-
-        return self
 
 
 # #     @midtown
@@ -332,22 +397,3 @@ class PlaylistManager(Manager):
     def get_uri(self, string):
         str_list = string.split(':')
         return str_list[-1]
-
-
-# def main():
-#     print('Test')
-#     # band_link = 'https://www.musicmidtown.com/lineup/interactive/'
-#     # new_concerts = ConcertManager(url=band_link).get_concert_html()
-#     # new_concerts.get_concert_soup().search()
-
-#     # ply_manager = PlaylistManager(new_concerts)
-#     # pdb.set_trace()
-#     # ply_manager.authenticate_spotify()
-#     # ply_manager.get_playlists()
-#     # ply_manager.get_playlist_id("Music Midtown 2018")
-#     # ply_manager.get_artist_ids()
-#     # ply_manager.add_top_five_songs()
-
-
-# if __name__ == '__main__':
-#     main()
