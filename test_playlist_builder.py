@@ -39,10 +39,12 @@ class ManagerTestCase(unittest.TestCase):
         self.assertTrue(response.ok)
 
     def test_recv_message_case2(self):
+        ## Need to test exception raised in app not requests
+        ## or catch requests exception
         "Case2: Bad Response"
-        url =  'BAD SITE'
+        url =  'http://BAD SITE'
         response = self.new_manager.get_response(url)
-        self.assertFalse(response.ok)
+        self.assertIsNone(response.ok)
 
     def test_start_session_case1(self):
         "Case1: Session Exists"

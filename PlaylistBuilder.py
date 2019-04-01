@@ -26,8 +26,8 @@ class ArtistNotFoundError(Exception):
     pass
 
 class Manager:
-    """ Manage sessions, responses, data storage, and remove expired data.
-    """
+    """Manage sessions, responses, data storage."""
+    
     def __init__(self, **kwargs):
 
         self.today = datetime.today()
@@ -51,15 +51,14 @@ class Manager:
                 
 
 class ConcertManager(Manager):
-    """ Reporter, Tracker """
-
+    """ Scrapes websites for concert data. Cleans and stores. """
+# Reporter, Tracker
     headers = {
         'user-agent': (
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
             'AppleWebKit/537.36 (KHTML, like Gecko)'
             'Chrome/68.0.3440.106 Safari/537.36')}
-
-# Existing Concert Sources
+    
     links = {
         'Athens': 'http://www.flagpole.com/events/live-music',
         'Music Midtown': 'https://www.musicmidtown.com/lineup/interactive/',
@@ -79,9 +78,31 @@ class ConcertManager(Manager):
 
         super().__init__(**kwargs)
 
+    def key_to_front(self, df):
+        columns = list(df.columns)
+        columns.insert(0, columns.pop())
 
+        return df[columns]
+
+    def create_etl_id(self):
+        """Generate ETLID#"""
+    
+        return random.randint(a=1000, b=9999)
+
+    def create_etl_df():
+        """Create Empty ETLID DataFrame."""
+
+        return pd.DataFrame(columns=['TableName', 'ETLID'])
+
+    def update_etl_df(df, tbl_name, etl_id):
+        """Update ETL DataFrame if Table Name and ID not in Table"""
+#         if etl_df.isin({'ETLID':[etl_id]}):
+        pass
+        
     def stage_data(self, data):
+        """Staging Table."""
     # create records for each time an artist plays
+    
         schema = {'Artist':[],
                 'ShowDate':[],
                 'ShowLocaton':[],
@@ -96,14 +117,26 @@ class ConcertManager(Manager):
                     schema['Artist'].append(artist)
 
         df = pd.DataFrame(data=schema)
+        df.loc[:, 'ETLID'] = 1000
         df['SourceRowID'] = df.index
-        df = df[['SourceRowID','Artist', 'ShowDate', 'ShowLocation', 'ShowInfo']]
-        df.loc[['ETLID']] = 1000
         
-        return df
+        return self.key_to_front(df)
     
+
+    def gate1_df(self, df):
+        """Spotify Table"""
+        
+        gate1_df = df.copy()
+        gate1_df.drop(columns=['ShowDate', 'ShowLocaton', 'ShowInfo'], inplace=True)
+        gate1_df.drop_duplicates(subset='Artist', inplace=True)
+        gate1_df.loc[:,"SpotifyKey"] = gate1_df['ETLID'] + gate1_df.iloc[::-1].index
+        gate1_df.loc[:,"ETLID"] = 4000
+        gate1_df = gate1_df[['SpotifyKey', 'SourceRowID', 'Artist', 'ETLID']]
+        
+        return gate1_df
+
     def gate2_df(self, df):
-        """ """
+        """Concert Table """
         ## use prefix function
         gate2_df = df
         gate2_df.ShowDate = pd.to_datetime(gate2_df.ShowDate)
@@ -112,84 +145,94 @@ class ConcertManager(Manager):
         key_df = key + days
         key_df = key_df.astype(int)
         gate2_df['ShowKey'] = test
+        gate1_df.loc[:,"ETLID"] = 2000
         gate2_df = gate2_df[['ShowKey', 'SourceRowID', 'ShowDate', 'ShowLocaton', 'ETLID']]
-
-
-
-#     def record_data(self, data):
-#         """Return multi-indexed dataframe of all collected concert data."""
         
-#         # Where, When, Who, How Much?
-#         # Columns: Venue, Showtime, Artist, Price
-#         # Stores All Data
-#         # Not really necessary if just trying to keep track of artists in playlist
+        return gate2_df
 
-#         labels = ['Venue', 'Artists', 'Price']
-#         conc_df = pd.DataFrame()
+
+    def gate2a_df(self, df):
+        """Upcoming Shows Table"""
+        today = datetime.datetime.today()
+        current = df[df['ShowDate'] > today]
+        end = ', '.join(list(current.columns)[:-1])
+        gate2a_df = df[f'{list(current.columns)[-1]}, {end}']
         
-#         for date in data:
-#             concerts = data[date]['Shows']
-#             df = pd.DataFrame(data=concerts) 
+        
+    def record_data(self, data):
+        """Return multi-indexed dataframe of all collected concert data."""
+        
+        # Where, When, Who, How Much?
+        # Columns: Venue, Showtime, Artist, Price
+        # Stores All Data
+        # Not really necessary if just trying to keep track of artists in playlist
+
+        labels = ['Venue', 'Artists', 'Price']
+        conc_df = pd.DataFrame()
+        
+        for date in data:
+            concerts = data[date]['Shows']
+            df = pd.DataFrame(data=concerts) 
             
-#             tuples = list(zip([date] * 3, list(labels)))
-#             index = pd.MultiIndex.from_tuples(tuples, names=['Date', 'Details'])
-#             df.columns = index
+            tuples = list(zip([date] * 3, list(labels)))
+            index = pd.MultiIndex.from_tuples(tuples, names=['Date', 'Details'])
+            df.columns = index
             
-#             conc_df = pd.concat([conc_df, df], axis=1)
+            conc_df = pd.concat([conc_df, df], axis=1)
                        
-#         return conc_df
+        return conc_df
         
     
-#     def dates_artists(self, data):
-#         """Return dataframe of all artist playing on a certain date."""
-#         ### TODO save different df's at in the beginning with the soup
+    def dates_artists(self, data):
+        """Return dataframe of all artist playing on a certain date."""
+        ### TODO save different df's at in the beginning with the soup
         
-#         date_artists = []
-#         for date, event in data.items():
-#             artists = [art for show in event['Shows'] for art in show['Artists']
-#                if art.lower() != 'open mic']
-#         if artists:
-#             date_artists.append({date:artists})
+        date_artists = []
+        for date, event in data.items():
+            artists = [art for show in event['Shows'] for art in show['Artists']
+               if art.lower() != 'open mic']
+        if artists:
+            date_artists.append({date:artists})
         
-#         ##TODO: make helper function
-#         da_df = pd.DataFrame()
-#         for show_date in date_artists:
-#             df = pd.DataFrame(data=show_date)
-#             da_df = pd.concat([df, conc_df], axis=1)
+        ##TODO: make helper function
+        da_df = pd.DataFrame()
+        for show_date in date_artists:
+            df = pd.DataFrame(data=show_date)
+            da_df = pd.concat([df, conc_df], axis=1)
         
-#         return da_df
+        return da_df
     
-#     def artists_df(self, data):
-#         """Return dataframe with artists as row index values and list of all dates."""
+    def artists_df(self, data):
+        """Return dataframe with artists as row index values and list of all dates."""
         
-#         # Unique set of Artists
-#         artists = {each for k, v in data.items()
-#                    for show in v['Shows']
-#                    for each in show['Artists']}
-#         artists = sorted(list(artists))
+        # Unique set of Artists
+        artists = {each for k, v in data.items()
+                   for show in v['Shows']
+                   for each in show['Artists']}
+        artists = sorted(list(artists))
     
-#         # Lists of aLl Show Dates for each Artist
-#         a_dict = {each:[] for each in artists}
-#         for date, event in data.items():
-#             for show in event['Shows']:
-#                 for artist in show['Artists']:
-#                     a_dict[artist].append(date)
+        # Lists of aLl Show Dates for each Artist
+        a_dict = {each:[] for each in artists}
+        for date, event in data.items():
+            for show in event['Shows']:
+                for artist in show['Artists']:
+                    a_dict[artist].append(date)
                     
-#         art = {'Artists' : [each
-#                             for k, v in a_dict.items()
-#                             for each in [k] * len(v)]}
+        art = {'Artists' : [each
+                            for k, v in a_dict.items()
+                            for each in [k] * len(v)]}
                     
-#         df_data = {'Artists':list(a_dict.keys()),
-#                    'Dates':list(a_dict.values()),
-#                    'Spotify':False,
-#                    'Future Shows':False}
-#         df = pd.DataFrame(data=df_data)
-#         df = df.astype({'Artists':str,
-#                    'Dates':list,
-#                    'Spotify':bool,
-#                    'Future Shows':bool})
+        df_data = {'Artists':list(a_dict.keys()),
+                   'Dates':list(a_dict.values()),
+                   'Spotify':False,
+                   'Future Shows':False}
+        df = pd.DataFrame(data=df_data)
+        df = df.astype({'Artists':str,
+                   'Dates':list,
+                   'Spotify':bool,
+                   'Future Shows':bool})
         
-#         return df
+        return df
 
     def update_future_shows(self):
         """Update column in df if artist has shows within the next 30 days."""
@@ -303,6 +346,7 @@ class PlaylistManager(Manager):
 
         self.new_artists = artists
         self.ply_name = name
+        
         self.sp = None
         self.token = None
         self.usr_playlists = None
@@ -330,8 +374,10 @@ class PlaylistManager(Manager):
             raise(AuthorizationError(self.token))
     
     def create_playlist(self):
+        """Create playlist if name does not already exist."""
+        
         if self.ply_name is None:
-            raise Exception('Playlist does not exist')
+            raise Exception('Playlist name not passed')
         else:
             self.sp.user_playlist_create(self.username, self.ply_name)
 
@@ -377,13 +423,13 @@ class PlaylistManager(Manager):
 
     # @top_tracks
     def add_tracks(self, uris):
+        """Add tracks to playlist"""
 
         self.sp.user_playlist_add_tracks(self.username, self.ply_id, uris)
 
-    def get_album(self):
-        pass
-
     def clear_playlist(self, sp, user, playlist_id=None):
+        """Remove all tracks from playlist."""
+        
         playlist_tracks = sp.user_playlist_tracks(user, playlist_id)
         sp.user_playlist_remove_all_occurrences_of_tracks(
             user, playlist_id, playlist_tracks, snapshot_id=None)
