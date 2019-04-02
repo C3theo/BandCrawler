@@ -7,7 +7,9 @@ Sublime Settings
 *.ipynb
 Scraps.txt
 *.xlsx
-*.cache
+*.cache*
 .cache-1221978947
 tests/fixtures/cassettes/ArtistID Cassete.json
 tests/fixtures/cassettes/Concert Cassete.json
+*.log
+*.yml
