@@ -33,9 +33,10 @@ TODO:
 
 import re
 import os
+import yaml
 
 import pdb
-import logging
+import logging, logging.config
 # import logmatic
 
 from datetime import datetime
@@ -49,6 +50,26 @@ import spotipy.util as util
 
 import numpy as np
 import pandas as pd
+
+
+
+def setup_logging(
+    default_path='logging.yaml',
+    default_level=logging.INFO,
+    env_key='LOG_CFG'
+):
+    """ Setup logging configuration. """
+    path = default_path
+    value = os.getenv(env_key, None)
+    if value:
+        path = value
+    if os.path.exists(path):
+        with open(path, 'rt') as f:
+            config = yaml.safe_load(f.read())
+        logging.config.dictConfig(config)
+    else:
+        logging.basicConfig(level=default_level)
+
 
 # Logging config
 logger = logging.getLogger(__name__)
@@ -80,107 +101,106 @@ class ArtistNotFoundError(Exception):
 
 
 # TODO change class name to Session Manager
-class Manager:
+class DataManager():
     """
-    Base class used to start sessions and return HTTP responses for data
-    extraction.
-    
+    A class used to start sessions, get HTTP Response ,and return Beautiful Soup
+    objects.
+
+    Attributes:
+        url
+        session
+        resonse
     """
     
-    def __init__(self, **kwargs):
+    def __init__(self, url=None):
+        
+        self.url = url
 
         self.session = None
-        # Header kwargs
-        super().__init__(**kwargs)
+        self.response = None
+
     
     def start_session(self):
-        """ Create new Session object."""
-        # TODO add ability to add optional headers
+        """ Create new Session object with user-agent headers."""
 
-        self.session = Session()
+        #Does this keep session alive??
+        with Session() as self.session: 
+            return self
 
-    def get_response(self, url, **kwargs):
+    def get_response(self):
         """
-        Return response from website
+        Set response attr to response
+        returned from URL.
         
-        Args: url
+        Args: url string
         """
-     
-        if self.session is not None:
-    
-            try:
-                return self.session.get(url, **kwargs)
+        #TODO: add specific Exceptions
+        # add headers to session in get
 
-            except Exception :
-                logger.exception("Exception occured")
-                
-class ConcertManager(Manager):
-    """
-    A class for handling the extraction and transformation of concert data.
-
-        Attributes:
-        where (str): the concert location to get data from, used as keys in the links dictionary.
-                    Only supported concerts have working scrapers. 
-    """
-
-    # Reporter, Tracker
-    headers = {
+        headers = {
         'user-agent': (
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
             'AppleWebKit/537.36 (KHTML, like Gecko)'
             'Chrome/68.0.3440.106 Safari/537.36')}
 
-    #links to data for scraping
-    links = {
-        'Athens': 'http://www.flagpole.com/events/live-music',
-        'Music Midtown': 'https://www.musicmidtown.com/lineup/interactive/',
-        'Bonnaroo':'https://www.bonnaroo.com/lineup/interactive/'}
-
-    def __init__(self, where=None, **kwargs):
-        
-        self.where = where
-        
         try:
-            self.url = self.links[where]
+            self.session.headers.update(headers)
+            self.response =  self.session.get(self.url, stream=True)
+            return self
+        except Exception :
+            logger.exception("Exception occured")
+    
+    def get_soup(self):
+        """ Set soup attr to Beautiful Soup Object using response.
 
-        except ConcertNotFoundError:
-            logger.warn("Concert not supported", exc_info=True)
-
+        Args: 
+            response.content: string
+        """
+        ##UNNECESSARY TRY/EXCEPT??
+        try:
+            return BeautifulSoup(self.response.content, 'lxml')
         except Exception:
             logger.exception("Exception occured")
-
-        self.soup = None
-        self.response = None
-        self.lineup = None
-
-        #TODO: Check why super init is used
-        super().__init__(**kwargs)
     
-    def start_session(self):
-        """" Create Session object and update with header info. """
+    def __repr__(self):
+        return f"DataManager({self.url})"
 
-        super().start_session()
-        self.session.headers.update(self.headers)
+    def __str__(self):
+        return f"DataManager({self.url})"      
+                
+class ConcertDataManager():
+    """
+    A class for managing the extraction and transformation of concert data from Beautiful Soup objects.
+    Creates Dictionary of data taken from Beautiful Soup object.
 
-    def get_response(self):
-        """ Return response from website """
+        Attributes:
+            url: string
+            concert_soup: (BeautifulSoup) From DataManager
+        
+        Owns:
+            DataManager
+    """
 
-        params = {'stream':True}
-        return super().get_response(self.url, **params)
+    url = 'http://www.flagpole.com/events/live-music'
 
-    def get_concert_soup(self):
+    def __init__(self):
+        
+        self.data_mgr = DataManager(url=ConcertDataManager.url)
+        self.concert_soup = self.data_mgr.start_session().get_response().get_soup()
 
-        if hasattr(self, 'response'):
-            self.soup = BeautifulSoup(self.response.content, 'lxml')
-        else:
-            return None
+    def parse_concert_soup(self):
+        """ Return dictionary of upcoming shows in Athens, Ga.
 
-    def athens_concerts(self):
-        """ Return dictionary of upcoming shows in Athens, Ga. """
+            Args:
+                self.concert_soup
+
+            Return:
+                concert: dict  Date, Event Count, Show Location, Artists performing, and other Show information such as time and price.
+        """
 
         logger.info(' Building Concert Dict. ')
 
-        events = self.soup.find(class_='event-list').findAll('h2')
+        events = self.concert_soup.find(class_='event-list').findAll('h2')
         concert_dict = {}
         for e in events:
             
@@ -204,22 +224,28 @@ class ConcertManager(Manager):
                                                             'Artists':names,
                                                             'ShowInfo':info.text})
         logger.debug(f'Data: {concert_dict}')
-             
+
         return concert_dict
 
-# TODO: Add way to keep track of date information for music festivals
-    def coachella_lineup(self):
-        """Return list of artists playing at Coachella. """
-        pass
+    def __repr__(self):
+        return f"ConcertManager({self.url})"
 
-    def bonnaroo_lineup(self):
-        """ Return list of artists playing at Bonnaroo. """
+    def __str__(self):
+        return f"ConcertManager({self.url})"
+
+class DataFrameManager():
+    """
+        A class used to transform a dictionary and return DataFrame Objects.
+
+        Attributes:
+            data: dict
         
-        events = self.soup.findAll(class_="c-lineup__caption-text js-view-details js-lineup__caption-text ")
-        return [e.text.strip() for e in events]
+    """
 
+    def __init__(self):
+        
+        self.data = ConcertDataManager().parse_concert_soup()
 
-# TODO New class for ETL functions
     def key_to_front(self, df):
         """
         Rearrange dataframe columns so new surrogate key is first.
@@ -238,8 +264,8 @@ class ConcertManager(Manager):
         return random.randint(a=1000, b=9999)
 
     def create_etl_df(self):
-        """Create Empty ETLID DataFrame with column names."""
-
+        """Create Empty ETLID DataFrame with column names. Used to keep track of existing tables."""
+        # Necessary??
         return pd.DataFrame(columns=['TableName', 'ETLID'])
 
     def update_etl_df(self, df, tbl_name, etl_id):
@@ -251,23 +277,26 @@ class ConcertManager(Manager):
             tbl_name
             etl_id
         """
-#         if etl_df.isin({'ETLID':[etl_id]}):
+        # if etl_df.isin({'ETLID':[etl_id]}):
         pass
         
-    def stage_df(self, data):
+    def stage_df(self):
         """
-        Return Staging DataFrame.
-        
-        Args: data
+            Return Staging Dataframe
+            
+            Arguments: self.data
+
+            Return: stage_df
         """
-    # create records for each time an artist plays
-    
+
+
+        #TODO: Refactor using JMESPATH
         schema = {'Artist':[],
                 'ShowDate':[],
                 'ShowLocaton':[],
                 'ShowInfo':[]}
 
-        for date, events in data.items(): 
+        for date, events in self.data.items(): 
             for show in events['Shows']:
                 for artist in show['Artists']:
                     schema['ShowDate'].append(date)
@@ -278,8 +307,10 @@ class ConcertManager(Manager):
         df = pd.DataFrame(data=schema)
         df.loc[:, 'ETLID'] = 1000
         df['SourceRowID'] = df.index
+
+        stage_df = self.key_to_front(df)
         
-        return self.key_to_front(df)
+        return stage_df
     
 
     def gate1_df(self, df):
@@ -417,10 +448,10 @@ class ConcertManager(Manager):
         return df
     
     def __repr__(self):
-        return f"ConcertManager({self.url})"
+        return f"DataFrameManager()"
 
     def __str__(self):
-        return f"ConcertManager({self.url})"
+        return f"DataFrameManager()"
 
 # Decorated Methods for controlling several Web Scrapers
 # Doesn't work well with complicated scrapes
@@ -454,7 +485,7 @@ class ConcertManager(Manager):
 
 #     return wrapper
 
-class PlaylistManager(Manager):
+class PlaylistManager():
     """
     A class used to handle Spotify authentication,
 
@@ -490,21 +521,14 @@ class PlaylistManager(Manager):
         self.artists = artists
         self.ply_name = ply_name
         
+        self.session = DataManager().start_session().session
         self.sp = None
         self.token = None
         self.user_playlists = None
-        self.artist_ids = None
         self.ply_id = None
-    
-        # kwargs = headers
-        super().__init__(**kwargs)
-
-    def start_session(self):
-        """ Create Session object. """
+        self.artist_ids = None
         
-        super().start_session()
-
-
+    
     def authenticate_spotify(self):
         """ Authenticate Spotify App using cached token if it exists. """
 
