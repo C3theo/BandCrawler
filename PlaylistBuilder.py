@@ -46,6 +46,7 @@ from requests import Session
 from bs4 import BeautifulSoup
 
 import spotipy
+import spotipy.oauth2 as oauth
 import spotipy.util as util
 
 import numpy as np
@@ -53,37 +54,11 @@ import pandas as pd
 
 
 
-def setup_logging(
-    default_path='logging.yaml',
-    default_level=logging.INFO,
-    env_key='LOG_CFG'
-):
-    """ Setup logging configuration. """
-    path = default_path
-    value = os.getenv(env_key, None)
-    if value:
-        path = value
-    if os.path.exists(path):
-        with open(path, 'rt') as f:
-            config = yaml.safe_load(f.read())
-        logging.config.dictConfig(config)
-    else:
-        logging.basicConfig(level=default_level)
+with open('log config.yml', 'r') as f:
+    config = yaml.safe_load(f.read())
+    logging.config.dictConfig(config)
 
-
-# Logging config
 logger = logging.getLogger(__name__)
-
-f_handler = logging.FileHandler('file.log')
-f_handler.setLevel(logging.WARNING)
-
-f_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-f_handler.setFormatter(f_format)
-
-resp_handler = logging.FileHandler('response.log')
-
-logger.addHandler(f_handler)
-
 
 ## TODO Document Exceptions same as classes
 class AuthorizationError(Exception):
@@ -91,9 +66,6 @@ class AuthorizationError(Exception):
     # TODO check if token cached - use spotipy function
     pass
 
-class ConcertNotFoundError(Exception):
-    """ Concert not currently supported. """
-    pass
 
 class ArtistNotFoundError(Exception):
     """ Artist not on Spotify. """
@@ -111,7 +83,7 @@ class DataManager():
         session
         resonse
     """
-    
+
     def __init__(self, url=None):
         
         self.url = url
@@ -122,9 +94,14 @@ class DataManager():
     
     def start_session(self):
         """ Create new Session object with user-agent headers."""
-
+        headers = {
+        'user-agent': (
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+            'AppleWebKit/537.36 (KHTML, like Gecko)'
+            'Chrome/68.0.3440.106 Safari/537.36')}
         #Does this keep session alive??
         with Session() as self.session: 
+            self.session.headers.update(headers)
             return self
 
     def get_response(self):
@@ -137,14 +114,7 @@ class DataManager():
         #TODO: add specific Exceptions
         # add headers to session in get
 
-        headers = {
-        'user-agent': (
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-            'AppleWebKit/537.36 (KHTML, like Gecko)'
-            'Chrome/68.0.3440.106 Safari/537.36')}
-
         try:
-            self.session.headers.update(headers)
             self.response =  self.session.get(self.url, stream=True)
             return self
         except Exception :
@@ -223,7 +193,7 @@ class ConcertDataManager():
                 concert_dict[concert_date]['Shows'].append({'ShowLocation':v.text,
                                                             'Artists':names,
                                                             'ShowInfo':info.text})
-        logger.debug(f'Data: {concert_dict}')
+        # logger.info('Data: %s', concert_dict)
 
         return concert_dict
 
@@ -244,7 +214,8 @@ class DataFrameManager():
 
     def __init__(self):
         
-        self.data = ConcertDataManager().parse_concert_soup()
+        self.concert_mgr = ConcertDataManager()
+        self.data = self.concert_mgr.parse_concert_soup()
 
     def key_to_front(self, df):
         """
@@ -354,7 +325,7 @@ class DataFrameManager():
         """
         Return Upcoming Shows DataFrame.
 
-        Args: df
+        Args: df gate2 DataFrame
         """
 
         today = datetime.datetime.today()
@@ -509,51 +480,86 @@ class PlaylistManager():
         scope
         redirect_uri
         """
-
+# Shocal app config
     username = os.environ['SPOTIPY_USERNAME']
     client_id = os.environ['SPOTIPY_CLIENT_ID']
     client_secret = os.environ['SPOTIPY_CLIENT_SECRET']
-    scope = 'playlist-read-private playlist-modify-private'
+    scope = 'playlist-modify-private playlist-read-private'
     redirect_uri = 'https://www.google.com/'
 
-    def __init__(self, artists=None, ply_name=None, **kwargs):
+    def __init__(self, ply_name=None, artists=None):
 
-        self.artists = artists
         self.ply_name = ply_name
+        self.artists = artists
         
-        self.session = DataManager().start_session().session
-        self.sp = None
         self.token = None
+        self.response_code = None
+        self.sp = None
+
         self.user_playlists = None
         self.ply_id = None
         self.artist_ids = None
+        self.client_mgr = None
+
+        self.session = DataManager().start_session().session
         
-    
-    def authenticate_spotify(self):
-        """ Authenticate Spotify App using cached token if it exists. """
+    def create_spotify_auth(self):
+        """ Create SpotifyOauth object.
 
-        # Use cached_token if available
-        # TODO: Need another way to handle authentication with Flask Web app
-        self.token = util.prompt_for_user_token(
-            self.username, self.scope, self.client_id,
-            self.client_secret, self.redirect_uri)
+            Return resp_code after user autentication.
+        """
 
-        kwargs = {'auth':self.token,
-            'requests_session':self.session}
-        self.sp = self.catch(spotipy.Spotify, kwargs)
+        # Create SpotifyAuth object
+        self.client_mgr = spotipy.oauth2.SpotifyOAuth(self.client_id,
+            self.client_secret, self.redirect_uri,
+            scope=self.scope, cache_path=fr'./__pycache__')
+        # Get cached taken
+        try:
+            self.token = self.client_mgr.get_cached_token()
+        except Exception:
+            logger.error("Error occured.", exc_info=True)
+        else:
+            # No token
+            #Get auth_url to user
+            auth_url = self.client_mgr.get_authorize_url()
+            #Get auth from user
+            response_auth_url = self.session.get(auth_url).url
+            self.response_code = self.client_mgr.parse_response_code(response_auth_url)
+            logger.info(f"Auth URL: {response_auth_url}\nResponse Code: {self.response_code}")
+ 
+    def create_spotify(self):
+        """Create Spotify object. """
+
+        auth_info = {'auth':self.token,
+                'requests_session':self.session,
+                'client_credentials_manager':self.client_mgr
+                }
+        # Create Spotify object
+        self.sp = self.catch(spotipy.Spotify, auth_info)
+
+        try:
+            token = self.sp.get_access_token(self.response_code)
+        except spotipy.oauth2.SpotifyOauthError:
+            logger.error(f"Response Code: {self.response_code}")
+        except Exception:
+            logger.error("Error occured.", exc_info=True)
+        scope = self.sp.client_credentials_manager.scope
+        logger.info(f"Scope: {scope}\nToken: {self.token}")
 
     #TODO: Determine how the Playlist will be maintained
     def create_playlist(self):
         """ Create playlist with ply_name attribute if it does not already exist. """
     
         # Might not work because params aren't kwargs in api
-        kwargs = {'user':self.username, 'name':self.ply_name}
-        self.catch(self.sp.user_playlist_create, kwargs)
+        # kwargs = {'user':self.username, 'name':self.ply_name}
+        # self.catch(self.sp.user_playlist_create, kwargs)
 
-        # try:
-        #     self.sp.user_playlist_create(self.username, self.ply_name)
-        # except Exception :
-        #     logger.error(" Exception occured. ", exc_info=True)
+        try:
+            self.sp.user_playlist_create(self.username, self.ply_name)
+        except spotipy.client.SpotifyException:
+            logger.error(f"Scope: {self.sp.client_credentials_manager.scope}", exc_info=True)
+        except Exception:
+            logger.error("Exception occured.", exc_info=True)
             
     def get_playlists(self):
         """ Set usr_playlist attribute to list of current user playlist names. """

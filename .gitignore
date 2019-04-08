@@ -13,3 +13,5 @@ tests/fixtures/cassettes/ArtistID Cassete.json
 tests/fixtures/cassettes/Concert Cassete.json
 *.log
 *.yml
+.vscode/settings.json
+site.db
