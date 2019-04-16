@@ -45,7 +45,32 @@ def test_token_auth(test_input, expectation):
 @pytest.fixture
 def playlist_mgr():
     """Setup Playlist Manger object """
-    return PlaylistManager(ply_name='Athens, Ga')
+    return PlaylistManager(ply_name='Test')
+
+@pytest.fixture
+def spotify_playlist_mgr()
+
+#TODO: create and delete playlist
+
+@pytest.fixture(scope="module")
+def spotify_playlist(playlist_mgr):
+    """
+    Spotify Playlist Fixture
+    """
+    playlist_mgr.create_client_mgr()
+    playlist_mgr.get_auth_token()
+    playlist_mgr.create_spotify()
+    playlist_mgr.create_playlist()
+    playlist_mgr.get_playlists().get_playlist_id(name='test')
+
+    yield playlist_mgr
+
+#     playlist_mgr.sp.delete_playlist()
+
+
+    
+
+def test_get_playlist_id(playlist_mgr)
 
 # TODO:
 # these all are testing what PlaylistManager object was called with
@@ -89,6 +114,3 @@ def test_scope_correct(mocker, playlist_mgr):
 def test_client_mgr(mocker, playlist_mgr):
     playlist_mgr.create_client_mgr()
 
-
-class TestArtistDataManager:
-    pass

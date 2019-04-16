@@ -50,12 +50,12 @@ class PlaylistManager():
     A class used to handle Spotify authentication and updating playlist.
 
     Args:
-        ply_name
+        playlist
         new_artists
 
     Instance Attributes
         artists
-        ply_name
+        playlist
         sp
         token
         usr_playlists
@@ -84,9 +84,9 @@ class PlaylistManager():
     scope = os.environ['SPOTIFY_SCOPE']
     redirect_uri = os.environ['SPOTIFY_REDIRECT_URI']
 
-    def __init__(self, ply_name=None, artists=None):
+    def __init__(self, playlist=None, artists=None):
 
-        self.ply_name = ply_name
+        self.playlist = playlist
         self.artists = artists
 
         self.token_info = None
@@ -148,12 +148,12 @@ class PlaylistManager():
     # TODO: Determine how the Playlist will be 'maintained'
     def create_playlist(self):
         """
-        Create playlist with ply_name attribute if it does not already exist.
+        Create playlist with playlist attribute if it does not already exist.
         """
 
         try:
             self.sp.user_playlist_create(
-                self.username, self.ply_name, public=False)
+                self.username, self.playlist, public=False)
         except spotipy.client.SpotifyException:
             logger.error(
                 fr"Invalid Scope: {self.sp.client_credentials_manager.scope}", exc_info=True)
@@ -168,23 +168,21 @@ class PlaylistManager():
         self.usr_playlists = self.sp.current_user_playlists()
         return self
 
-    def get_playlist_id(self, name=None):
+    def get_playlist_id(self):
         """
         Return uri of specified user playlists. 
         """
 
         # TODO: Refactor w/o for loop
         # list comp
-        
-        for each in self.usr_playlists['items']:
-            # How to use catch()??
-            #  Check format of usr_playlists
-            try:
-                each['name'] == name
-            except Exception:
-                logger.exception(" Exception occured. ")
-            else:
-                self.ply_id = self.get_uri(each["uri"])
+        try:
+            for each in self.usr_playlists['items']:
+                # How to use catch()??
+                #  Check format of usr_playlists
+                if each['name'].lower() == self.playlist.lower():
+                    self.ply_id = self.get_uri(each["uri"])
+        except StopIteration as err:
+            logger.exception(fr"{err} occured. Playlist doesn't exist", exc_info=True)
 
     def get_artist_ids(self):
         """ 
