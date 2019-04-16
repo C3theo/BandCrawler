@@ -1,35 +1,32 @@
-## """
-#     This modules contains classes to build playlists that are up to date
-#     with the schedule of touring musicians.
-#     Extraction: 
-#         Web Scrapers
-#         Spotify API
+"""
+    This modules contains classes to build playlists that are up to date
+    with the schedule of touring musicians.
+    Extraction:
+        Web Scrapers
+        Spotify API
 
-#     Transformation:
-#         Spotify Artist Table
+    Transformation:
+        Spotify Artist Table
 
-#         Concert Date Table
+        Concert Date Table
 
-#         Current Artist Table
+        Current Artist Table
 
-#     Loading
-#         Pandas Dataframes -> Sqllite Database
-#         Flask Web application
+    Loading
+        Pandas Dataframes -> Sqllite Database
+        Flask Web application
 
-#     Data Sources:
-#         Spotify API
-#         Local newspaper and concert websites
+    Data Sources:
+        Spotify API
+        Local newspaper and concert websites
 
-#     Example:
+    Example:
 
 
-# TODO:
-#     Flask Web App
+TODO:
+    Flask Web App
 
-# """
-# import logmatic
-import logging
-import logging.config
+"""
 import os
 import pdb
 import random
@@ -42,19 +39,16 @@ import pandas as pd
 import spotipy
 import spotipy.oauth2 as oauth
 import spotipy.util as util
-import yaml
+
 from bs4 import BeautifulSoup
 from requests import Session
 
-
-with open('log config.yml', 'r') as f:
-    config = yaml.safe_load(f.read())
-    logging.config.dictConfig(config)
-
-logger = logging.getLogger(__name__)
+from config import logger
 
 # TODO Document Exceptions same as classes
 # Move to different file
+
+
 class AuthorizationError(Exception):
     """ Authorization keys not Cached. """
     # TODO check if token cached - use spotipy function
@@ -122,18 +116,19 @@ class DataManager():
             response.content: string
         """
         # TODO: add specific exceptions
-        # No response content
+        # No response content Exception
         try:
             return BeautifulSoup(self.response.content, 'lxml')
         except Exception:
             logger.exception("Exception occured")
 
     def __repr__(self):
-        return f"DataManager({self.url})"
+        return fr'DataManager({self.url})'
 
     def __str__(self):
-        return f"DataManager({self.url})"
-        
+        return fr'DataManager({self.url})'
+
+
 class ConcertDataManager():
     """
     A class for managing the extraction and transformation of concert data from Beautiful Soup objects.
@@ -174,7 +169,7 @@ class ConcertDataManager():
         for event in events:
 
             concert_date = event.text
-            concert_date = f'{concert_date} {datetime.today().year}'
+            concert_date = fr'{concert_date} {datetime.today().year}'
             concert_datetime = datetime.strptime(concert_date, '%A, %B %d %Y')
 
             event_count = event.findNext('p')
@@ -196,11 +191,10 @@ class ConcertDataManager():
         return concert_dict
 
     def __repr__(self):
-        return f"ConcertManager({self.url})"
+        return fr'ConcertManager({self.url})'
 
     def __str__(self):
-        return f"ConcertManager({self.url})"
-
+        return fr'ConcertManager({self.url})'
 
 class DataFrameManager():
     """
@@ -334,7 +328,7 @@ class DataFrameManager():
         today = datetime.datetime.today()
         current = df[df['ShowDate'] > today]
         end = ', '.join(list(current.columns)[:-1])
-        gate2a_df = df[f'{list(current.columns)[-1]}, {end}']
+        gate2a_df = df[fr'{list(current.columns)[-1]}, {end}']
 
         return gate2a_df
 
@@ -375,7 +369,7 @@ class DataFrameManager():
         Args: data
 
         Returns:
-        
+
         """
 
         date_artists = []
@@ -426,10 +420,10 @@ class DataFrameManager():
         return df
 
     def __repr__(self):
-        return f"DataFrameManager()"
+        return fr'DataFrameManager()'
 
     def __str__(self):
-        return f"DataFrameManager()"
+        return fr'DataFrameManager()'
 
 # Decorated Methods for controlling several Web Scrapers
 # Doesn't work well with complicated scrapes
@@ -463,9 +457,11 @@ class DataFrameManager():
 
 #     return wrapper
 
-#TODO:
+# TODO:
 # separate class for playlist
-#class ArtistDataManager():
+# class ArtistDataManager():
+
+
 class PlaylistManager():
     """
     A class used to handle Spotify authentication and updating playlist.
@@ -492,11 +488,18 @@ class PlaylistManager():
     """
 # Shocal app config
 # TODO move to env file for deployment
-    username = os.environ['SPOTIPY_USERNAME']
-    client_id = os.environ['SPOTIPY_CLIENT_ID']
-    client_secret = os.environ['SPOTIPY_CLIENT_SECRET']
-    scope = 'playlist-modify-private playlist-read-private'
-    redirect_uri = 'https://www.google.com/'
+    # username = os.environ['SPOTIPY_USERNAME']
+    # client_id = os.environ['SPOTIPY_CLIENT_ID']
+    # client_secret = os.environ['SPOTIPY_CLIENT_SECRET']
+    # scope = 'playlist-modify-private playlist-read-private'
+    # redirect_uri = 'https://www.google.com/'
+
+    #TODO: Test env file
+    username = os.environ['SPOTIFY_USERNAME']
+    client_id = os.environ['SPOTIFY_CLIENT_ID']
+    client_secret = os.environ['SPOTIFY_CLIENT_SECRET']
+    scope = os.environ['SPOTIFY_SCOPE']
+    redirect_uri = os.environ['SPOTIFY_REDIRECT_URI']
 
     def __init__(self, ply_name=None, artists=None):
 
@@ -525,23 +528,20 @@ class PlaylistManager():
             cache_path
 
         """
-        cache_path = WindowsPath("__pycache__") / \
-            fr'.cache-{self..username}'
+        cache_path = WindowsPath("__pycache__") / fr'.cache-{self.username}'
         self.client_mgr = spotipy.oauth2.SpotifyOAuth(self.client_id, self.client_secret,
                                                       self.redirect_uri, scope=self.scope,
                                                       cache_path=cache_path)
 
-    def get_auth_token():
-        """ Get oauth token from cache or prompt for new token.
+    def get_auth_token(self):
+        """ 
+        Get oauth token from cache or prompt for new token.
         """
 
         try:
             self.token_info = self.client_mgr.get_cached_token()
-            #TODO: Fix EOL error
-            # logger.info(f"Cached token expires at {
-            #         time.strftime('%c',
-            #         time.localtime(self.token_info['expires_at']))}",
-            #         exc_info=True)
+            # TODO: Fix EOL error
+
         # TODO: add other exceptions
         except Exception:
             # Or scope not subset
@@ -549,10 +549,11 @@ class PlaylistManager():
             logger.error("No token in cache, or invalid scope.", exc_info=True)
 
     def create_spotify(self):
-        """ Create Spotify object.
+        """
+        Create Spotify object.
 
         Args: token, session, client_mgr
-         """
+        """
 
         auth_info = {'auth': self.token, 'requests_session': self.session,
                      'client_credentials_manager': self.client_mgr}
@@ -560,26 +561,31 @@ class PlaylistManager():
         # TODO: Test token and client_mgr
         self.sp = self.catch(spotipy.Spotify, auth_info)
 
-    # TODO: Determine how the Playlist will be maintained
+    # TODO: Determine how the Playlist will be 'maintained'
     def create_playlist(self):
-        """ Create playlist with ply_name attribute if it does not already exist. """
+        """
+        Create playlist with ply_name attribute if it does not already exist.
+        """
 
         try:
             self.sp.user_playlist_create(
                 self.username, self.ply_name, public=False)
         except spotipy.client.SpotifyException:
-            logger.error(
-                f"Invalid Scope: {self.sp.client_credentials_manager.scope}", exc_info=True)
+            logger.error(fr"Invalid Scope: {self.sp.client_credentials_manager.scope}", exc_info=True)
         except Exception:
             logger.error("Exception occured.", exc_info=True)
 
     def get_playlists(self):
-        """ Set usr_playlist attribute to list of current user playlist names."""
+        """
+        Set usr_playlist attribute to list of current user playlist names.
+        """
 
         self.usr_playlists = self.catch(self.sp.current_user_playlists)
 
     def get_playlist_id(self, name=None):
-        """ Return uri of specified user playlists. """
+        """
+        Return uri of specified user playlists. 
+        """
 
         # TODO: Refactor w/o for loop
         for each in self.usr_playlists['items']:
@@ -605,9 +611,9 @@ class PlaylistManager():
             for each in self.artists]
 
     def find_artist_info(self, category, item):
-        """ Query artist apy """
+        """ Query artist api """
 
-        kwargs = {'q': f'{category}: {item}', 'type': category}
+        kwargs = {'q': fr'{category}: {item}', 'type': category}
         return self.catch(self.sp.search, kwargs)
 
     def get_top_tracks(self, num_songs=10):
@@ -637,9 +643,11 @@ class PlaylistManager():
             user, playlist_id, playlist_tracks, snapshot_id=None)
 
     def update_playlist(self):
+        """
+        Update spotify playlist
+        """
         pass
 
- 
     def get_uri(self, string):
         """
         Return URI at the end of Spotify String.
@@ -651,10 +659,11 @@ class PlaylistManager():
 
 
 def catch(func, kwargs):
-    """ Helper function for logging unknown exceptions."""
+    """
+    Helper function for logging unknown exceptions.
+    """
 
     try:
         return func(**kwargs)
-
     except Exception:
         logger.exception('Exception occured')

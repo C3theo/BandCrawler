@@ -2,16 +2,15 @@
 __pycache__
 pyvenv.txt
 *.cfg
-Sublime Settings
 *.json
 *.ipynb
 Scraps.txt
 *.xlsx
 *.cache*
 .cache-1221978947
-tests/fixtures/cassettes/ArtistID Cassete.json
-tests/fixtures/cassettes/Concert Cassete.json
+tests/fixtures
 *.log
 *.yml
-.vscode/settings.json
-site.db
+*.db
+.env
+.pytest_cache
