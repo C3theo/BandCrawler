@@ -41,6 +41,7 @@ def test_token_auth(test_input, expectation):
 
     assert (test_input['expires_at'] > time.time()) == expectation
 
+
 @pytest.fixture
 def playlist_mgr():
     """Setup Playlist Manger object """

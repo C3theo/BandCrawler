@@ -5,7 +5,6 @@
     sqlalchemy
     spotify
 """
-# logger.info(f"Cached token expires at {time.strftime('%c', time.localtime(self.token_info['expires_at']))}", exc_info=True)
 
 import logging
 import logging.config
@@ -24,7 +23,7 @@ load_dotenv()
 
 with open('log config.yml', 'r') as f:
     log_config = yaml.safe_load(f.read())
-    logging.config.dictConfig(config)
+    logging.config.dictConfig(log_config)
 # This might not log other files correctly
 logger = logging.getLogger(__name__)
 

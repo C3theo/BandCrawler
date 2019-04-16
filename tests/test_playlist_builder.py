@@ -1,18 +1,15 @@
-# #TODO Where did this come from and what's it for?
-# # try:
-# #     import context 
-# # except ModuleNotFoundError:
-# #     import tests.context
+import unittest
+import pytest
 
-# import os
+import os
 
-# from betamax import Betamax
-# from betamax_serializers import pretty_json
+from betamax import Betamax
+from betamax_serializers import pretty_json
 
-# from PlaylistBuilder import (ArtistNotFoundError, AuthorizationError,
-#                              BeautifulSoup, ConcertDataManager,
-#                              DataFrameManager, DataManager, PlaylistManager,
-#                              spotipy, oauth, Session)
+from PlaylistBuilder import (ArtistNotFoundError, AuthorizationError,
+                             BeautifulSoup, ConcertDataManager,
+                             DataFrameManager, DataManager, PlaylistManager,
+                             spotipy, oauth, Session)
 
 # #Setup Cassette configuration
 # Betamax.register_serializer(pretty_json.PrettyJSONSerializer)
@@ -23,11 +20,8 @@
 #     # TODO Fix session authentication cassette
 #     # config.define_cassette_placeholder('<AUTH_TOKEN>', api_token)
 
-
-# with recorder.use_cassette('athens',
-#                                 serialize_with='prettyjson',
-#                               record='new_episodes'):
-# # TODO Testing Base Class with "Domain Specific Knowledge"
+# # TODO Unit Testing Base Class with "Domain Specific Knowledge"
+# Not necessary w/ pytest??
 
 # class DataManagerTestCase(unittest.TestCase):
 #     """
