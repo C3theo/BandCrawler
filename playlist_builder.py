@@ -19,15 +19,13 @@
     Data Sources:
         Spotify API
         Local newspaper and concert websites
-
+TODO: Add Example Usage
     Example:
 
 
-TODO:
-    Flask Web App
-
 """
 import os
+import pdb
 # TODO: Refactor out time and just use datetime
 import time
 from pathlib import WindowsPath
@@ -94,10 +92,21 @@ class PlaylistManager():
         self.sp = None
         self.user_playlists = None
         self.ply_id = None
-        self.artist_ids = None
+    
         self.client_mgr = None
+        self.artist_ids = []
 
         self.session = DataManager().start_session().session
+
+    def __call__(self):
+        """ Sets up Playlistmanager object"""
+        # patch method to return itself
+        return self
+        # self.create_client_mgr()
+        # self.get_auth_token()
+        # self.create_spotify()
+        # self.create_playlist()
+        # self.get_playlists().get_playlist_id(
 
     def create_client_mgr(self):
         """
@@ -124,7 +133,8 @@ class PlaylistManager():
         try:
             self.token_info = self.client_mgr.get_cached_token()
             logger.info(
-                f"Token expires at {time.strftime('%c', time.localtime(self.token_info['expires_at']))}", exc_info=True)
+                f"Token expires at {time.strftime('%c', time.localtime(self.token_info['expires_at']))}",
+                exc_info=True)
             return self
         # TODO: add other exceptions
         except Exception:
@@ -139,11 +149,13 @@ class PlaylistManager():
         Args: token, session, client_mgr
         """
 
-        auth_info = {'auth': self.token_info['access_token'], 'requests_session': self.session,
-                     'client_credentials_manager': self.client_mgr}
-        # Create Spotify object
-        # TODO: Test token and client_mgr
-        self.sp = catch(spotipy.Spotify, auth_info)
+        try:
+            auth_info = {'auth': self.token_info['access_token'], 'requests_session': self.session,
+                         'client_credentials_manager': self.client_mgr}
+            # Create Spotify object
+            self.sp = catch(spotipy.Spotify, auth_info)
+        except TypeError:
+            logger.error("Token error.", exc_info=True)
 
     # TODO: Determine how the Playlist will be 'maintained'
     def create_playlist(self):
@@ -160,6 +172,13 @@ class PlaylistManager():
         except Exception:
             logger.error("Exception occured.", exc_info=True)
 
+    def playlist_exists(self):
+        """
+        Check if playlist exists for user.
+        """
+# TODO: Finish fcn
+        self.get_playlist_id()
+
     def get_playlists(self):
         """
         Set usr_playlist attribute to list of current user playlist names.
@@ -175,30 +194,61 @@ class PlaylistManager():
 
         # TODO: Refactor w/o for loop
         # list comp
-        try:
-            for each in self.usr_playlists['items']:
-                # How to use catch()??
-                #  Check format of usr_playlists
-                if each['name'].lower() == self.playlist.lower():
-                    self.ply_id = self.get_uri(each["uri"])
-        except StopIteration as err:
-            logger.exception(fr"{err} occured. Playlist doesn't exist", exc_info=True)
+
+        if self.usr_playlists is not None:
+            try:
+                for each in self.usr_playlists['items']:
+                    if each['name'].lower() == self.playlist.lower():
+                        self.ply_id = self.get_uri(each["uri"])
+            except StopIteration as err:
+                logger.exception(
+                    fr"{err} occured. Playlist doesn't exist", exc_info=True)
+        else:
+            # Bad practice??
+            self.get_playlists()
+            self.get_playlist_id()
 
     def get_artist_ids(self):
         """ 
         Set artist_ids attribute to list of artist ids returned from
         find_artist_info().
         """
+        #TODO need to figure out how to look up lots of artist ids
 
-        self.artist_ids = [
-            self.find_artist_info('artist', each)['artists']['items'][0]['uri']
-            for each in self.artists]
+        for each in self.artists:
+            results = self.find_artist_info('artist', each)
+            # pdb.set_trace()
+            if not results['artists']['items']:
+                logger.info(f'{each} artist found in Spotify')
+                self.artist_ids.append(results['artists']['items'][0]['uri'])
+            else:
+                continue
+        
+            # self.artist_ids = [
+            #     self.find_artist_info('artist', each)[
+            #         'artists']['items'][0]['uri']
+            #     for each in self.artists]
+        # except IndexError:
+        #     logger.error('Artist not on spotify')
 
-    def find_artist_info(self, category, item):
+    def find_artist_info(self, query, item_type):
         """ Query artist api """
 
-        kwargs = {'q': fr'{category}: {item}', 'type': category}
-        return catch(self.sp.search, kwargs)
+        kwargs = {'q': fr'{query}: {item_type}', 'type': item_type}
+        result = self.sp.search(**kwargs)
+
+        result = result if result is not None else None
+        return result
+
+        # General Error handling
+        # return catch(self.sp.search, kwargs)
+
+    def fix_name(self):
+        """
+        Fix artist name if it doesn't match what's in Spotify library.
+        """
+
+        pass
 
     def get_top_tracks(self, num_songs=10):
         """ Return uris of all the artists top ten tracks."""
@@ -241,6 +291,9 @@ class PlaylistManager():
         str_list = string.split(':')
         return str_list[-1]
 
+    def upload_image(self):
+        pass
+
 
 def catch(func, kwargs):
     """
@@ -251,3 +304,4 @@ def catch(func, kwargs):
         return func(**kwargs)
     except Exception:
         logger.exception('Exception occured')
+        raise

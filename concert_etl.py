@@ -14,6 +14,8 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 
+from config import logger
+
 
 class AuthorizationError(Exception):
     """ Authorization keys not Cached. """
@@ -70,10 +72,10 @@ class DataManager():
 
         try:
             self.response = self.session.get(self.url, stream=True)
+            logger.info('Response from %s: \n %s', self.url, self.response)
             return self
-            # TODO: Save json file
         except Exception:
-            logger.exception("Exception occured")
+            logger.exception("Exception occured", exc_info=True)
 
     def get_soup(self):
         """ Set soup attr to Beautiful Soup Object using response.
@@ -86,7 +88,7 @@ class DataManager():
         try:
             return BeautifulSoup(self.response.content, 'lxml')
         except Exception:
-            logger.exception("Exception occured")
+            logger.exception("Exception occured", exc_info=True)
 
     def __repr__(self):
         return fr'DataManager({self.url})'
@@ -97,7 +99,8 @@ class DataManager():
 
 class ConcertDataManager():
     """
-    A class for managing the extraction and transformation of concert data from Beautiful Soup objects.
+    A class for managing the extraction and transformation of concert data
+    from Beautiful Soup objects.
     Creates Dictionary of data taken from Beautiful Soup object.
 
         Attributes:
@@ -130,7 +133,7 @@ class ConcertDataManager():
         logger.info(' Building Concert Dict. ')
 
         events = self.concert_soup.find(class_='event-list').findAll('h2')
-
+        #TODO: change to list of dicts for pandas
         concert_dict = {}
         for event in events:
 
@@ -152,7 +155,11 @@ class ConcertDataManager():
                 concert_dict[concert_date]['Shows'].append({'ShowLocation': venue.text,
                                                             'Artists': names,
                                                             'ShowInfo': info.text})
-        # logger.info('Data: %s', concert_dict)
+
+        #TODO: add ability to log range of concert dates
+        # logger.info('Concerts found for these dates)
+        #TODO: pprint logs
+        logger.info('Concerts Found: \n\n %s', concert_dict)
 
         return concert_dict
 
@@ -162,6 +169,7 @@ class ConcertDataManager():
     def __str__(self):
         return fr'ConcertManager({self.url})'
 
+
 class DataFrameManager():
     """
         A class used to transform a dictionary and return DataFrame Objects.
@@ -170,10 +178,12 @@ class DataFrameManager():
             data: dict       
     """
 
-    def __init__(self):
-        self.concert_mgr = ConcertDataManager()
-        self.data = self.concert_mgr.parse_concert_soup()
-
+    def __init__(self, data=None):
+        # self.concert_mgr = ConcertDataManager()
+        # self.data = self.concert_mgr.parse_concert_soup()
+        self.data = data
+        # TODO: add check for if data is not none/ready\
+            # handled by luigi
     def key_to_front(self, df):
         """
         Rearrange dataframe columns so new surrogate key is first.
@@ -186,14 +196,19 @@ class DataFrameManager():
 
         return df[columns]
 
+# Admin functions
     def create_etl_id(self):
-        """ Generate ETLID# used for static ETL gate ID's."""
+        """
+        Generate ETLID# used for static ETL gate ID's.
+        """
         # use prefix function for col name
         return random.randint(a=1000, b=9999)
 
     def create_etl_df(self):
-        """Create Empty ETLID DataFrame with column names. Used to keep track of existing tables."""
-        # Necessary??
+        """
+        Create Empty ETLID DataFrame with column names.
+        Used to keep track of existing tables.
+        """
         return pd.DataFrame(columns=['TableName', 'ETLID'])
 
     def update_etl_df(self, df, tbl_name, etl_id):
@@ -205,8 +220,12 @@ class DataFrameManager():
             tbl_name
             etl_id
         """
+        # TODO: figure out how to update existing tables
+
         # if etl_df.isin({'ETLID':[etl_id]}):
         pass
+    # TODO:
+    # check foreign key generation practices
 
     def stage_df(self):
         """
@@ -216,28 +235,39 @@ class DataFrameManager():
 
             Return: stage_df
         """
-
         # TODO: Refactor using JMESPATH
-        schema = {'Artist': [],
-                  'ShowDate': [],
-                  'ShowLocaton': [],
-                  'ShowInfo': []}
+        schema = {'artist': [],
+                  'show_date': [],
+                  'show_location': [],
+                  'show_info': []}
+                #   ['artist', 'show_date', 'show_location', 'show_info']
 
         for date, events in self.data.items():
             for show in events['Shows']:
                 for artist in show['Artists']:
-                    schema['ShowDate'].append(date)
-                    schema['ShowLocaton'].append(show['ShowLocation'])
-                    schema['ShowInfo'].append(show['ShowInfo'])
-                    schema['Artist'].append(artist)
+                    schema['show_date'].append(date)
+                    schema['show_location'].append(show['ShowLocation'])
+                    schema['show_info'].append(show['ShowInfo'])
+                    schema['artist'].append(artist)
 
         df = pd.DataFrame(data=schema)
         df.loc[:, 'ETLID'] = 1000
-        df['SourceRowID'] = df.index
-
+        primary_id = 'source_row_id'
+        #TODO: add to gate index if this is done for all gates
+        df[primary_id] = df.index
         stage_df = self.key_to_front(df)
+        stage_df = self.set_gate_index(stage_df, primary_id='source_row_id')
 
         return stage_df
+
+    def set_gate_index(self, df, primary_id='primary_id'):
+        """
+        Set primary index label.
+        """
+
+        df.set_index(primary_id, verify_integrity=True, inplace=True)
+
+        return df
 
     def gate1_df(self, df):
         """ 
@@ -389,37 +419,7 @@ class DataFrameManager():
         return fr'DataFrameManager()'
 
     def __str__(self):
-        return fr'DataFrameManager()'
+        return fr'DataFrameManager()'\
 
-
-        # Decorated Methods for controlling several Web Scrapers
-# Doesn't work well with complicated scrapes
-# This method vs. Scrapy WebScrapers ??
-
-#     @midtown
-#     def search(self, search_func):
-#         self.artists = {
-#             ' '.join(each.text.split())
-#             for each in self.soup.findAll(class_=search_func)}
-
-# def midtown(f):
-
-#     def wrapper(*args, **kwargs):
-#         search = re.compile('c-lineup__caption-text js-view-details'
-#                             ' js-lineup__caption-text ')
-
-#         return f(search)
-
-#     return wrapper
-
-# def athens(func):
-
-#     def wrapper(self):
-#         search = re.compile("")
-
-#         def str_func(soup_tag):
-#             return ' '.join(soup_tag.text.split())
-
-#         return func(self, str_func, search)
-
-#     return wrapper
+def df_to_db(df):
+    pass
