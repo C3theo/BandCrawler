@@ -26,7 +26,6 @@ import jmespath
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
-# pdb.set_trace()
 from .concert_etl import DataManager
 from config import logger
 from dotenv import load_dotenv
@@ -68,15 +67,15 @@ class SpotifyAuthManager():
     scope = os.environ['SPOTIFY_SCOPE']
     redirect_uri = os.environ['SPOTIFY_REDIRECT_URI']
 
-    def __init__(self, playlist='test'):
-
-        self.playlist = playlist
+    def __init__(self):
 
         self.token_info = None
         self.response_code = None
         self.client_mgr = None
 
         self.session = DataManager().start_session().session
+        # use same session
+        # self.session = session
 
     def create_client_mgr(self):
         """
@@ -90,6 +89,7 @@ class SpotifyAuthManager():
             cache_path
 
         """
+
         cache_path = WindowsPath("__pycache__") / fr'.cache-{self.username}'
         self.client_mgr = SpotifyOAuth(self.client_id, self.client_secret,
                                        self.redirect_uri, scope=self.scope,
@@ -104,8 +104,7 @@ class SpotifyAuthManager():
         try:
             self.token_info = self.client_mgr.get_cached_token()
             logger.info(
-                f"Token expires at {time.strftime('%c', time.localtime(self.token_info['expires_at']))}",
-                exc_info=True)
+                f"Token expires at {time.strftime('%c', time.localtime(self.token_info['expires_at']))}")
             return self
         # TODO: add other exceptions
         except Exception:
@@ -127,9 +126,8 @@ class SpotifyAuthManager():
                          'client_credentials_manager': self.client_mgr}
             return catch(spotipy.Spotify, auth_info)
         except TypeError:
+            # Why TypeError?
             logger.error("Token error.", exc_info=True)
-
-#  getting user playlistID artists spotify info and updating playlist.
 
 
 class SpotifyPlaylistManager():
@@ -149,7 +147,7 @@ class SpotifyPlaylistManager():
         # else:
         #     self.spotify = spotify
 
-        self.spotify = None
+        self.spotify = spotify
         self.playlist_name = playlist_name
 
         self.playlist_id = None
@@ -159,8 +157,8 @@ class SpotifyPlaylistManager():
         Return uri of specified user playlists. 
         """
 
-        self.ply_id = jmespath.search(f"items[?name=='{self.playlist_name}'].id",
-                                      self.spotify.current_user_playlists())[0]
+        self.playlist_id = jmespath.search(f"items[?name=='{self.playlist_name}'].id",
+                                           self.spotify.current_user_playlists())[0]
 
     def get_playlist_artists(self):
         """
@@ -171,7 +169,7 @@ class SpotifyPlaylistManager():
     def get_playlist_tracks(self):
         """
         """
-        # Get full details of the tracks of a playlist owned by a use
+        # Get full details of the tracks of a playlist owned by a user
         self.spotify.user_playlist_tracks()
 
     def add_tracks(self, uris):
@@ -195,6 +193,7 @@ class SpotifyPlaylistManager():
         Update spotify playlist
         """
         pass
+
 # TODO:
 # match with schedule
 # user_playlist_reorder_tracks(
@@ -209,10 +208,10 @@ class SpotifyArtistManager():
         Class for getting artist info from Spotify API.
 
     """
-    # Don't need oathentication to get artist info. Less rate limiting.
 
-    def __init__(self, artists):
+    def __init__(self, spotify, artists):
 
+        self.spotify = spotify
         self.artists = artists
         self.spotify_artists = []
 
@@ -221,17 +220,19 @@ class SpotifyArtistManager():
         Set spotify_artists attribute to list of artist json objects returned from
         find_artist_info().
         """
-
+        
         for each in self.artists:
+            logger.info('Queried Spotify API Artist Endpoint for: \n\n %s', each)
             result = self.find_artist_info(query=each, item_type='artist')
 
             if jmespath.search("artists.items", result):
-                logger.info(f'{each} artist found in Spotify Library')
+                # TODO: fix this log to only return artist names
+                logger.info('Spotify API Artist Endpoint returned %s', jmespath.search("artists.items", result))
                 self.spotify_artists.append(result)
             else:
                 continue
 
-        logger.info('Spotify API Artinst Endpoint Responses: \n')
+        # logger.info('Spotify API Artist Endpoint Responses: \n\n %s', self.spotify_artists)
 
     def find_artist_info(self, query=None, item_type=None):
         """

@@ -1,8 +1,12 @@
 """
 Concert ETL Functions
 """
+
 from bs4 import BeautifulSoup
 from requests import Session
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+
 import pdb
 import random
 import re
@@ -24,11 +28,31 @@ class ArtistNotFoundError(Exception):
     """ Artist not on Spotify. """
     pass
 
+
+class TimeoutHTTPAdapter(HTTPAdapter):
+    # headers = {
+    #     'user-agent': (
+    #             'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+    #             'AppleWebKit/537.36 (KHTML, like Gecko)'
+    #             'Chrome/68.0.3440.106 Safari/537.36')}
+
+    def send(self, *args, **kwargs):
+        kwargs['timeout'] = 5
+        return super(TimeoutHTTPAdapter, self).send(*args, **kwargs)
+    
+    # def add_headers(self, *args, **kwargs):
+    #     kwargs['headers'] = self.headers
+    #     return super()
+
 class DataManager():
     """
-    A class used to start sessions, get HTTP Response ,and return Beautiful Soup
+    A class used to start sessions, get HTTP Response's ,and return Beautiful Soup
     objects.
-
+    
+    TODO: Refactor out beautifulsoup calls
+    Used for Playlistmanager as well.
+    Start new session?
+    Lmits?
     Attributes:
         url
         session
@@ -42,17 +66,27 @@ class DataManager():
         self.session = None
         self.response = None
 
-    def start_session(self):
-        """ Create new Session object with user-agent headers."""
+    def start_session(self,
+        retries=3,
+        backoff_factor=0.3,
+        status_forcelist=(500, 502, 504)):
+        """ Create new Session object with user-agent headers, timeout, 
+        and retry backoff."""
 
         headers = {
-            'user-agent': (
+        'user-agent': (
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
                 'AppleWebKit/537.36 (KHTML, like Gecko)'
                 'Chrome/68.0.3440.106 Safari/537.36')}
-        # TODO: Find out if this keeps session alive
+        
+        retry = Retry(total=retries, read=retries, connect=retries,
+            backoff_factor=backoff_factor, status_forcelist=status_forcelist)
+
         with Session() as self.session:
+            adapter = TimeoutHTTPAdapter(max_retries=retry)
             self.session.headers.update(headers)
+            self.session.mount('http:', adapter)
+            self.session.mount('https://', adapter)
             return self
 
     def get_response(self):
@@ -95,8 +129,7 @@ class DataManager():
 class ConcertDataManager():
     """
     A class for managing the extraction and transformation of concert data
-    from Beautiful Soup objects.
-    Creates Dictionary of data taken from Beautiful Soup object.
+    from Beautiful Soup objects. Creates Dictionary of data from Beautiful Soup object.
 
         Attributes:
             url: string
@@ -112,6 +145,7 @@ class ConcertDataManager():
 
         self.data_mgr = DataManager(url=ConcertDataManager.url)
         self.concert_soup = self.data_mgr.start_session().get_response().get_soup()
+        # self.soup = soup
 
     def parse_concert_soup(self):
         """ Return dictionary of upcoming shows in Athens, Ga.
@@ -125,7 +159,7 @@ class ConcertDataManager():
                     and Show information.
         """
 
-        logger.info(' Building Concert Dict. ')
+        # logger.info(' Building Concert Dict. ')
 
         events = self.concert_soup.find(class_='event-list').findAll('h2')
         #TODO: change to list of dicts for pandas
@@ -154,7 +188,7 @@ class ConcertDataManager():
         #TODO: add ability to log range of concert dates
         # logger.info('Concerts found for these dates)
         #TODO: pprint logs
-        logger.info('Concerts Found: \n\n %s', concert_dict)
+        # logger.info('Concerts Found: \n\n %s', concert_dict)
 
         return concert_dict
 
