@@ -8,11 +8,9 @@ import random
 import re
 from datetime import datetime
 
-# TODO Document Exceptions same as classes
-# Move to different file
-
 import numpy as np
 import pandas as pd
+import os
 
 from config import logger
 
@@ -22,13 +20,10 @@ class AuthorizationError(Exception):
     # TODO check if token cached - use spotipy function
     pass
 
-
 class ArtistNotFoundError(Exception):
     """ Artist not on Spotify. """
     pass
 
-
-# TODO change class name to Session Manager
 class DataManager():
     """
     A class used to start sessions, get HTTP Response ,and return Beautiful Soup
@@ -170,7 +165,7 @@ class ConcertDataManager():
         return fr'ConcertManager({self.url})'
 
 
-class DataFrameManager():
+class ConcertETLManager():
     """
         A class used to transform a dictionary and return DataFrame Objects.
 
@@ -179,18 +174,18 @@ class DataFrameManager():
     """
 
     def __init__(self, data=None):
-        # self.concert_mgr = ConcertDataManager()
-        # self.data = self.concert_mgr.parse_concert_soup()
-        self.data = data
-        # TODO: add check for if data is not none/ready\
-            # handled by luigi
+        self.concert_mgr = ConcertDataManager()
+        self.data = self.concert_mgr.parse_concert_soup()
+
+        # self.data = data
+        # TODO: add check for if data is not none/ready
+        # handled by luigi
     def key_to_front(self, df):
         """
         Rearrange dataframe columns so new surrogate key is first.
 
         Args: df
         """
-
         columns = list(df.columns)
         columns.insert(0, columns.pop())
 
@@ -224,9 +219,17 @@ class DataFrameManager():
 
         # if etl_df.isin({'ETLID':[etl_id]}):
         pass
+
     # TODO:
     # check foreign key generation practices
+    def set_gate_index(self, df, primary_id='primary_key'):
+        """
+        Set primary index label.
+        """
 
+        df.set_index(primary_id, verify_integrity=True, inplace=True)
+
+        return df
     def stage_df(self):
         """
             Return Staging Dataframe
@@ -251,23 +254,14 @@ class DataFrameManager():
                     schema['artist'].append(artist)
 
         df = pd.DataFrame(data=schema)
-        df.loc[:, 'ETLID'] = 1000
+        df.loc[:, 'etl_id'] = 1000
         primary_id = 'source_row_id'
         #TODO: add to gate index if this is done for all gates
         df[primary_id] = df.index
         stage_df = self.key_to_front(df)
-        stage_df = self.set_gate_index(stage_df, primary_id='source_row_id')
-
+        # stage_df = self.set_gate_index(stage_df, primary_id='source_row_id')
+        # save column for data lineage
         return stage_df
-
-    def set_gate_index(self, df, primary_id='primary_id'):
-        """
-        Set primary index label.
-        """
-
-        df.set_index(primary_id, verify_integrity=True, inplace=True)
-
-        return df
 
     def gate1_df(self, df):
         """ 
@@ -275,18 +269,17 @@ class DataFrameManager():
 
         Args: df
 
-        Returns:
-
         """
 
         gate1_df = df.copy()
+     
         gate1_df.drop(
-            columns=['ShowDate', 'ShowLocaton', 'ShowInfo'], inplace=True)
-        gate1_df.drop_duplicates(subset='Artist', inplace=True)
-        gate1_df.loc[:, "SpotifyKey"] = gate1_df['ETLID'] + \
+            columns=['show_date', 'show_location', 'show_info'], inplace=True)
+        gate1_df.drop_duplicates(subset='artist', inplace=True)
+        gate1_df.loc[:, "spotify_key"] = gate1_df['etl_id'] + \
             gate1_df.iloc[::-1].index
-        gate1_df.loc[:, "ETLID"] = 4000
-        gate1_df = gate1_df[['SpotifyKey', 'SourceRowID', 'Artist', 'ETLID']]
+        gate1_df.loc[:, "etl_id"] = 4000
+        gate1_df = gate1_df[['spotify_key', 'source_row_id', 'artist', 'etl_id']]
 
         return gate1_df
 
@@ -296,7 +289,6 @@ class DataFrameManager():
 
         Args: df
 
-        Returns:
         """
 
         gate2_df = df

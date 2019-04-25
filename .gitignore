@@ -16,3 +16,4 @@ tests/fixtures
 .pytest_cache
 venv
 migrations
+vscode

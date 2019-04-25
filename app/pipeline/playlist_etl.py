@@ -1,26 +1,18 @@
 """
     This modules contains classes to build playlists that are up to date
     with the schedule of touring musicians.
+
     Extraction:
-        Web Scrapers
-        Spotify API
+        Artist Information
 
     Transformation:
         Spotify Artist Table
 
-        Concert Date Table
-
-        Current Artist Table
-
     Loading
-        Pandas Dataframes -> Sqllite Database
-        Flask Web application
+        Pandas -> SQL
 
-    Data Sources:
+    Sources:
         Spotify API
-        Local newspaper and concert websites
-TODO: Add Example Usage
-    Example:
 
 
 """
@@ -29,51 +21,42 @@ import pdb
 # TODO: Refactor out time and just use datetime
 import time
 from pathlib import WindowsPath
+import jmespath
 
 import spotipy
-import spotipy.oauth2 as oauth
-import spotipy.util as util
+from spotipy.oauth2 import SpotifyOAuth
 
-import config
-from concert_etl import DataManager
+# pdb.set_trace()
+from .concert_etl import DataManager
 from config import logger
+from dotenv import load_dotenv
 
-# TODO:
-# separate class for playlist
-# class ArtistDataManager():
-
+load_dotenv()
 
 class PlaylistManager():
     """
-    A class used to handle Spotify authentication and updating playlist.
+        A class used to handle Spotify authentication and updating playlist.
 
-    Args:
-        playlist
-        new_artists
+        Args:
+            playlist
+            new_artists
 
-    Instance Attributes
-        artists
-        playlist
-        sp
-        token
-        usr_playlists
-        artist_ids
-        ply_id
+        Instance Attributes
+            artists
+            playlist
+            sp
+            token
+            usr_playlists
+            artist_ids
+            ply_id
 
-    Class Attributes:
-        username
-        client_id
-        client_secret
-        scope
-        redirect_uri
+        Class Attributes:
+            username
+            client_id
+            client_secret
+            scope
+            redirect_uri
     """
-# Shocal app config
-# TODO move to env file for deployment
-    # username = os.environ['SPOTIPY_USERNAME']
-    # client_id = os.environ['SPOTIPY_CLIENT_ID']
-    # client_secret = os.environ['SPOTIPY_CLIENT_SECRET']
-    # scope = 'playlist-modify-private playlist-read-private'
-    # redirect_uri = 'https://www.google.com/'
 
     # TODO: Test env file
     username = os.environ['SPOTIFY_USERNAME']
@@ -92,21 +75,13 @@ class PlaylistManager():
         self.sp = None
         self.user_playlists = None
         self.ply_id = None
-    
+
         self.client_mgr = None
-        self.artist_ids = []
+        self.spotify_artists = []
 
         self.session = DataManager().start_session().session
 
-    def __call__(self):
-        """ Sets up Playlistmanager object"""
-        # patch method to return itself
-        return self
-        # self.create_client_mgr()
-        # self.get_auth_token()
-        # self.create_spotify()
-        # self.create_playlist()
-        # self.get_playlists().get_playlist_id(
+
 
     def create_client_mgr(self):
         """
@@ -121,9 +96,9 @@ class PlaylistManager():
 
         """
         cache_path = WindowsPath("__pycache__") / fr'.cache-{self.username}'
-        self.client_mgr = spotipy.oauth2.SpotifyOAuth(self.client_id, self.client_secret,
-                                                      self.redirect_uri, scope=self.scope,
-                                                      cache_path=cache_path)
+        self.client_mgr = SpotifyOAuth(self.client_id, self.client_secret,
+                                       self.redirect_uri, scope=self.scope,
+                                       cache_path=cache_path)
 
     def get_auth_token(self):
         """
@@ -162,7 +137,6 @@ class PlaylistManager():
         """
         Create playlist with playlist attribute if it does not already exist.
         """
-
         try:
             self.sp.user_playlist_create(
                 self.username, self.playlist, public=False)
@@ -176,7 +150,7 @@ class PlaylistManager():
         """
         Check if playlist exists for user.
         """
-# TODO: Finish fcn
+    # TODO: Finish fcn
         self.get_playlist_id()
 
     def get_playlists(self):
@@ -192,38 +166,30 @@ class PlaylistManager():
         Return uri of specified user playlists. 
         """
 
-        # TODO: Refactor w/o for loop
-        # list comp
-
         if self.usr_playlists is not None:
-            try:
-                for each in self.usr_playlists['items']:
-                    if each['name'].lower() == self.playlist.lower():
-                        self.ply_id = self.get_uri(each["uri"])
-            except StopIteration as err:
-                logger.exception(
-                    fr"{err} occured. Playlist doesn't exist", exc_info=True)
+            self.ply_id = jmespath.search(f"items[?name=='{self.playlist}'].id", self.usr_playlists)[0]
         else:
             # Bad practice??
             self.get_playlists()
             self.get_playlist_id()
 
-    def get_artist_ids(self):
+    def get_artist_info(self):
         """ 
-        Set artist_ids attribute to list of artist ids returned from
+        Set spotify_artists attribute to list of artist json objects returned from
         find_artist_info().
         """
-        #TODO need to figure out how to look up lots of artist ids
+
+        #TODO: Add way to grab top 10 songs
 
         for each in self.artists:
-            results = self.find_artist_info('artist', each)
-            # pdb.set_trace()
-            if not results['artists']['items']:
-                logger.info(f'{each} artist found in Spotify')
-                self.artist_ids.append(results['artists']['items'][0]['uri'])
+            result = self.find_artist_info(query=each, item_type='artist')
+
+            if jmespath.search("artists.items", result):
+                logger.info(f'{each} artist found in Spotify Library')
+                self.spotify_artists.append(result)
             else:
                 continue
-        
+
             # self.artist_ids = [
             #     self.find_artist_info('artist', each)[
             #         'artists']['items'][0]['uri']
@@ -231,10 +197,10 @@ class PlaylistManager():
         # except IndexError:
         #     logger.error('Artist not on spotify')
 
-    def find_artist_info(self, query, item_type):
-        """ Query artist api """
+    def find_artist_info(self, query=None, item_type=None):
+        """ Query Spotify Search endpoint. """
 
-        kwargs = {'q': fr'{query}: {item_type}', 'type': item_type}
+        kwargs = {'q': f'{item_type}: {query}', 'type': item_type}
         result = self.sp.search(**kwargs)
 
         result = result if result is not None else None
@@ -242,7 +208,7 @@ class PlaylistManager():
 
         # General Error handling
         # return catch(self.sp.search, kwargs)
-
+    
     def fix_name(self):
         """
         Fix artist name if it doesn't match what's in Spotify library.
