@@ -17,3 +17,4 @@ tests/fixtures
 venv
 migrations
 vscode
+.vscode/settings.json

@@ -1,219 +1,68 @@
 """
-Concert ETL Functions
+Concert ETL Classes
 """
-
-from bs4 import BeautifulSoup
-from requests import Session
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
-
-import pdb
-import random
-import re
-from datetime import datetime
 
 import numpy as np
 import pandas as pd
 import os
 
-from config import logger
 
 
-class AuthorizationError(Exception):
-    """ Authorization keys not Cached. """
-    # TODO check if token cached - use spotipy function
-    pass
+# Singleton
+class Concert_Manager:
 
-class ArtistNotFoundError(Exception):
-    """ Artist not on Spotify. """
-    pass
-
-
-class TimeoutHTTPAdapter(HTTPAdapter):
-    # headers = {
-    #     'user-agent': (
-    #             'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-    #             'AppleWebKit/537.36 (KHTML, like Gecko)'
-    #             'Chrome/68.0.3440.106 Safari/537.36')}
-
-    def send(self, *args, **kwargs):
-        kwargs['timeout'] = 5
-        return super(TimeoutHTTPAdapter, self).send(*args, **kwargs)
-    
-    # def add_headers(self, *args, **kwargs):
-    #     kwargs['headers'] = self.headers
-    #     return super()
-
-class DataManager():
-    """
-    A class used to start sessions, get HTTP Response's ,and return Beautiful Soup
-    objects.
-    
-    TODO: Refactor out beautifulsoup calls
-    Used for Playlistmanager as well.
-    Start new session?
-    Lmits?
-    Attributes:
-        url
-        session
-        resonse
-    """
-
-    def __init__(self, url=None):
-
-        self.url = url
-
-        self.session = None
-        self.response = None
-
-    def start_session(self,
-        retries=3,
-        backoff_factor=0.3,
-        status_forcelist=(500, 502, 504)):
-        """ Create new Session object with user-agent headers, timeout, 
-        and retry backoff."""
-
-        headers = {
-        'user-agent': (
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
-                'AppleWebKit/537.36 (KHTML, like Gecko)'
-                'Chrome/68.0.3440.106 Safari/537.36')}
-        
-        retry = Retry(total=retries, read=retries, connect=retries,
-            backoff_factor=backoff_factor, status_forcelist=status_forcelist)
-
-        with Session() as self.session:
-            adapter = TimeoutHTTPAdapter(max_retries=retry)
-            self.session.headers.update(headers)
-            self.session.mount('http:', adapter)
-            self.session.mount('https://', adapter)
-            return self
-
-    def get_response(self):
-        """
-        Set response attr to response
-        returned from URL.
-
-        Args: url string
-        """
-        # TODO: add specific Exceptions
-        # add headers to session in get
-
-        try:
-            self.response = self.session.get(self.url, stream=True)
-            logger.info('Response from %s: \n %s', self.url, self.response)
-            return self
-        except Exception:
-            logger.exception("Exception occured", exc_info=True)
-
-    def get_soup(self):
-        """ Set soup attr to Beautiful Soup Object using response.
-
-        Args: 
-            response.content: string
-        """
-        # TODO: add specific exceptions
-        # No response content Exception
-        try:
-            return BeautifulSoup(self.response.content, 'lxml')
-        except Exception:
-            logger.exception("Exception occured", exc_info=True)
-
-    def __repr__(self):
-        return fr'DataManager({self.url})'
-
-    def __str__(self):
-        return fr'DataManager({self.url})'
-
-
-class ConcertDataManager():
-    """
-    A class for managing the extraction and transformation of concert data
-    from Beautiful Soup objects. Creates Dictionary of data from Beautiful Soup object.
-
-        Attributes:
-            url: string
-            concert_soup: (BeautifulSoup) From DataManager
-
-        Owns:
-            DataManager
-    """
-
-    url = 'http://www.flagpole.com/events/live-music'
+    concerts = []
 
     def __init__(self):
 
-        self.data_mgr = DataManager(url=ConcertDataManager.url)
-        self.concert_soup = self.data_mgr.start_session().get_response().get_soup()
-        # self.soup = soup
+        self.week = week
+    
+    def create_weekly_schedule():
 
-    def parse_concert_soup(self):
-        """ Return dictionary of upcoming shows in Athens, Ga.
+        return week_concerts
 
-            Args:
-                self.concert_soup
+class Artist(dict):
 
-            Return:
-                concert: dict
-                    keys: Date, Event Count, Show Location, Artists, 
-                    and Show information.
+    def__init__(self):
+
+        self.name_spotify_id = dict()
+        self.top_5_songs = dict() 
+
+# Singleton
+class Playlist:
+
+    last_updated = None
+
+    spotify_id = ''
+
+    artists = artist
+
+    self.schedule = Concert_Manager
+
+    def get_artists()
+        """
+            Get list of Artist Objects for next week.
         """
 
-        # logger.info(' Building Concert Dict. ')
+class DatabaseTemplate:
+    def connect():
 
-        events = self.concert_soup.find(class_='event-list').findAll('h2')
-        #TODO: change to list of dicts for pandas
-        concert_dict = {}
-        for event in events:
-
-            concert_date = event.text
-            concert_date = fr'{concert_date} {datetime.today().year}'
-            concert_datetime = datetime.strptime(concert_date, '%A, %B %d %Y')
-
-            event_count = event.findNext('p')
-            venues = event.findNext('ul').findAll('h4')
-            concert_dict[concert_date] = {'datetime': concert_datetime,
-                                          'Event Count': event_count.text}
-            # Event Count for Data Audit
-            concert_dict[concert_date]['Shows'] = []
-            for venue in venues:
-                info = venue.findNext('p')
-                bands = info.fetchNextSiblings()
-                names = [each.strong.text.replace('\xa0', '')
-                         for each in bands if each.strong]
-                concert_dict[concert_date]['Shows'].append({'ShowLocation': venue.text,
-                                                            'Artists': names,
-                                                            'ShowInfo': info.text})
-
-        #TODO: add ability to log range of concert dates
-        # logger.info('Concerts found for these dates)
-        #TODO: pprint logs
-        # logger.info('Concerts Found: \n\n %s', concert_dict)
-
-        return concert_dict
-
-    def __repr__(self):
-        return fr'ConcertManager({self.url})'
-
-    def __str__(self):
-        return fr'ConcertManager({self.url})'
+    def query():
 
 
-class ConcertETLManager():
+
+
+# Template for Concert & Spotify Dataframe Transformations
+class PandasETLManager:
     """
-        A class used to transform a dictionary and return DataFrame Objects.
+        A class used to manage DataFrame Objects.
 
         Attributes:
             data: dict       
     """
 
     def __init__(self, data=None):
-        self.concert_mgr = ConcertDataManager()
-        self.data = self.concert_mgr.parse_concert_soup()
 
-        # self.data = data
-        # TODO: add check for if data is not none/ready
-        # handled by luigi
     def key_to_front(self, df):
         """
         Rearrange dataframe columns so new surrogate key is first.
@@ -225,7 +74,6 @@ class ConcertETLManager():
 
         return df[columns]
 
-# Admin functions
     def create_etl_id(self):
         """
         Generate ETLID# used for static ETL gate ID's.
@@ -236,8 +84,11 @@ class ConcertETLManager():
     def create_etl_df(self):
         """
         Create Empty ETLID DataFrame with column names.
-        Used to keep track of existing tables.
+        Used to keep track of ETL Gate Dataframes Dataframes.
         """
+        # Should you keep track of weekly updates. Check ETL best practes website
+
+        # TODO: Refactor
         return pd.DataFrame(columns=['TableName', 'ETLID'])
 
     def update_etl_df(self, df, tbl_name, etl_id):
@@ -264,6 +115,12 @@ class ConcertETLManager():
         df.set_index(primary_id, verify_integrity=True, inplace=True)
 
         return df
+    
+    def stage_df():
+        raise NotImplementedError()
+
+class ConcertETL():
+
     def stage_df(self):
         """
             Return Staging Dataframe
@@ -441,11 +298,3 @@ class ConcertETLManager():
 
         return df
 
-    def __repr__(self):
-        return fr'DataFrameManager()'
-
-    def __str__(self):
-        return fr'DataFrameManager()'\
-
-def df_to_db(df):
-    pass

@@ -23,16 +23,32 @@ import time
 from pathlib import WindowsPath
 import jmespath
 
-import spotipy
-from spotipy.oauth2 import SpotifyOAuth
+
 
 from .concert_etl import DataManager
 from config import logger
 from dotenv import load_dotenv
 
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
 load_dotenv()
 
+# create spotify singleton
+spotify = SpotipyAdapter()
 
+class SpotipyAdapter():
+    """
+        Adapter to spotipy library.
+    """
+
+    def authenticate_user(self):
+
+    def update_playlist(self):
+
+    def get_artist_info(self):
+
+
+# make class singleton
 class SpotifyAuthManager():
     """
         A class used to handle Spotify Oauth.
@@ -41,24 +57,11 @@ class SpotifyAuthManager():
         Owned by Playlist & ArtistManager.
 
         Args:
-            playlist
-            new_artists
 
         Instance Attributes
-            artists
-            playlist
-            spotify
-            token
-            usr_playlists
-            artist_ids
-            ply_id
 
         Class Attributes:
-            username
-            client_id
-            client_secret
-            scope
-            redirect_uri
+
     """
 
     username = os.environ['SPOTIFY_USERNAME']
@@ -113,6 +116,18 @@ class SpotifyAuthManager():
             logger.error("No token in cache, or invalid scope.", exc_info=True)
 
         return self
+    
+    def refresh_auth_token(self):
+        """
+            Refresh authentication token.
+
+            Same spotify obect used throughout. How to call from owning classes.
+        """
+        
+        self.client_mgr.refresh_access_token(self.token_info['refresh_token'])
+         logger.info(
+                f"Token refreshed, expires at: {time.strftime('%c', time.localtime(self.token_info['expires_at']))}")
+
 
     def create_auth_spotify(self):
         """
@@ -232,8 +247,6 @@ class SpotifyArtistManager():
             else:
                 continue
 
-        # logger.info('Spotify API Artist Endpoint Responses: \n\n %s', self.spotify_artists)
-
     def find_artist_info(self, query=None, item_type=None):
         """
             Query Spotify Search endpoint.
@@ -245,30 +258,32 @@ class SpotifyArtistManager():
         result = result if result is not None else None
         return result
 
+    def get_top_tracks(self, num_songs=10):
+        """ Return uris of all the artists top ten tracks."""
+
+        for each in self.spotify_artists:
+            results = self.spotify.artist_top_tracks(each)
+
+            # uris = {
+            #     self.get_uri(each['uri'])
+            #     for each in results['tracks'][:num_songs]}
+        return uris
+    
     def save_artist_json(self):
         """
-            Save artist json objects to file.
+            Save artist json objects to file for logging.
         """
         # TODO: add way to check for duplicates
 
         with open('spotify_artists.json', 'w') as f:
             json.dump(self.spotify_artists, f)
-
-    def get_top_tracks(self, num_songs=10):
-        """ Return uris of all the artists top ten tracks."""
-
-        for each in self.artist_ids:
-            results = self.spotify.artist_top_tracks(each)
-            uris = {
-                self.get_uri(each['uri'])
-                for each in results['tracks'][:num_songs]}
-        return uris
-
+    
     def spotify_stage_df(self):
         """
-            Stage artist responses in df.
+            Create staging df from artist responses in cache.
         """
         # TODO: add absolute path to saved json
+        # move to testing
         df = pd.read_json('spotify_artists.json', orient='records')
         df.rename(axis=1, mapper={
                   'artists': 'spotify_responses'}, inplace=True)
@@ -299,6 +314,33 @@ class SpotifyArtistManager():
         small_artists_df[small_artists_df['followers'] < 1000].sort_values(
             'followers', axis=0, ascending=False)
         return small_artists_df
+
+# load_df = spotify_df.loc[spotify_df['artist_name'].str.lower().isin(stage_df['artist'].str.lower()), :]
+# refresh token decorator
+def check_token(cls, kwargs):
+    """
+        Helper function for refreshing authentication token.
+    """
+
+    for k, v in list(vars(cls).items()):
+        if callable(value):
+            setattr(cls, key, refresh_token(value))
+
+def refresh_token(func, kwargs):
+    #wrap all methods
+    # if spotify token is old, get new one fore existing object
+
+    # try:
+    #     # spotify.method() with existing token
+    # except:
+    #     spotify.refresh_token()
+    try:
+        # try to run method.
+        pdb.set_trace()
+        func(**kwargs)
+    except SpotifyException:
+        obj.spotify.refresh_auth_token()
+
 
 
 def catch(func, kwargs):
