@@ -24,7 +24,6 @@ from pathlib import WindowsPath
 import jmespath
 
 
-
 from .concert_etl import DataManager
 from config import logger
 from dotenv import load_dotenv
@@ -36,16 +35,20 @@ load_dotenv()
 # create spotify singleton
 spotify = SpotipyAdapter()
 
+
 class SpotipyAdapter():
     """
         Adapter to spotipy library.
     """
 
     def authenticate_user(self):
+        pass
 
     def update_playlist(self):
+        pass
 
     def get_artist_info(self):
+        pass
 
 
 # make class singleton
@@ -116,18 +119,17 @@ class SpotifyAuthManager():
             logger.error("No token in cache, or invalid scope.", exc_info=True)
 
         return self
-    
+
     def refresh_auth_token(self):
         """
             Refresh authentication token.
 
             Same spotify obect used throughout. How to call from owning classes.
         """
-        
-        self.client_mgr.refresh_access_token(self.token_info['refresh_token'])
-         logger.info(
-                f"Token refreshed, expires at: {time.strftime('%c', time.localtime(self.token_info['expires_at']))}")
 
+        self.client_mgr.refresh_access_token(self.token_info['refresh_token'])
+        logger.info(
+            f"Token refreshed, expires at: {time.strftime('%c', time.localtime(self.token_info['expires_at']))}")
 
     def create_auth_spotify(self):
         """
@@ -235,14 +237,16 @@ class SpotifyArtistManager():
         Set spotify_artists attribute to list of artist json objects returned from
         find_artist_info().
         """
-        
+
         for each in self.artists:
-            logger.info('Queried Spotify API Artist Endpoint for: \n\n %s', each)
+            logger.info(
+                'Queried Spotify API Artist Endpoint for: \n\n %s', each)
             result = self.find_artist_info(query=each, item_type='artist')
 
             if jmespath.search("artists.items", result):
                 # TODO: fix this log to only return artist names
-                logger.info('Spotify API Artist Endpoint returned %s', jmespath.search("artists.items", result))
+                logger.info('Spotify API Artist Endpoint returned %s',
+                            jmespath.search("artists.items", result))
                 self.spotify_artists.append(result)
             else:
                 continue
@@ -268,7 +272,7 @@ class SpotifyArtistManager():
             #     self.get_uri(each['uri'])
             #     for each in results['tracks'][:num_songs]}
         return uris
-    
+
     def save_artist_json(self):
         """
             Save artist json objects to file for logging.
@@ -277,7 +281,7 @@ class SpotifyArtistManager():
 
         with open('spotify_artists.json', 'w') as f:
             json.dump(self.spotify_artists, f)
-    
+
     def spotify_stage_df(self):
         """
             Create staging df from artist responses in cache.
@@ -317,6 +321,8 @@ class SpotifyArtistManager():
 
 # load_df = spotify_df.loc[spotify_df['artist_name'].str.lower().isin(stage_df['artist'].str.lower()), :]
 # refresh token decorator
+
+
 def check_token(cls, kwargs):
     """
         Helper function for refreshing authentication token.
@@ -326,8 +332,9 @@ def check_token(cls, kwargs):
         if callable(value):
             setattr(cls, key, refresh_token(value))
 
+
 def refresh_token(func, kwargs):
-    #wrap all methods
+    # wrap all methods
     # if spotify token is old, get new one fore existing object
 
     # try:
@@ -340,7 +347,6 @@ def refresh_token(func, kwargs):
         func(**kwargs)
     except SpotifyException:
         obj.spotify.refresh_auth_token()
-
 
 
 def catch(func, kwargs):

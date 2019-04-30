@@ -5,11 +5,14 @@
 from bs4 import BeautifulSoup
 from requests import Session
 from requests.adapters import HTTPAdapter
-# from requests.packages.urllib3.util.retry import Retry
+from urllib3.util.retry import Retry
 
+from datetime import datetime
 from datetime import date, timedelta
 from config import logger
+import pdb
 
+import jmespath
 
 class TimeoutHTTPAdapter(HTTPAdapter):
     """
@@ -32,17 +35,20 @@ def start_session(retries=3, backoff_factor=0.3,
             'AppleWebKit/537.36 (KHTML, like Gecko)'
             'Chrome/68.0.3440.106 Safari/537.36')}
 
-    # retry = Retry(total=retries, read=retries, connect=retries,
-    #               backoff_factor=backoff_factor, status_forcelist=status_forcelist)
+    retry = Retry(total=retries, read=retries, connect=retries,
+                  backoff_factor=backoff_factor, status_forcelist=status_forcelist)
 
     with Session() as session:
-        adapter = TimeoutHTTPAdapter(max_retries=3)
+        adapter = TimeoutHTTPAdapter(max_retries=retry)
         session.headers.update(headers)
         session.mount('http:', adapter)
         session.mount('https://', adapter)
         return session
 
 # Strategy Pattern
+# attach Parser
+
+
 class Scraper:
     """
         Behavior:
@@ -53,13 +59,11 @@ class Scraper:
             url
     """
 
-    def __init__(self, url=None):
+    def __init__(self, url=None, session=None):
 
-        self.url = url
+        self.url = 'http://www.flagpole.com/events/live-music'
+        self.session = session
         self.response = None
-
-        self.session = start_session()
-# Make response & soup properties?
 
     def get_response(self):
         """
@@ -72,85 +76,69 @@ class Scraper:
         try:
             self.response = self.session.get(self.url, stream=True)
             logger.info('Response from %s: \n %s', self.url, self.response)
-            return self
         except Exception:
             logger.exception("Exception occured", exc_info=True)
 
-    def get_soup(self):
+    def get_concerts(self):
         """
-        Set soup attr to Beautiful Soup Object using response.
-
-        Args: 
-            response.content: string
         """
+        content = self.response.content
+        soup = BeautifulSoup(content, 'lxml')
+        return parse_soup(soup)
 
-        return BeautifulSoup(self.response.content, 'lxml')
 
-
-class AthensParser():
+def parse_soup(soup):
     """
-    A class for managing the extraction and transformation of concert data
-    from Beautiful Soup objects. Creates Dictionary of data from Beautiful Soup object.
+        Return dictionary of upcoming shows in Athens, Ga.
 
-        Attributes:
-            url: string
-            concert_soup: (BeautifulSoup) From DataManager
+        Args:
+            self.concert_soup
 
-        Owns:
-            Scraper
+        Return:
+            concert: dict
+                keys: Date, Event Count, Show Location, Artists, 
+                and Show information.
     """
 
-    def __init__(self):
+    # logger.info(' Building Concert Dict. ')
 
-        url = 'http://www.flagpole.com/events/live-music'
-        self.concert_soup = Scraper(url=url).get_response().get_soup()
+    events = soup.find(class_='event-list').findAll('h2')
+    # TODO: change to list of dicts for pandas
+    concert_dict = {}
+    concert_dict['concerts'] = []
+    for event in events:
 
-    def parse_soup(self):
-        """
-            Return dictionary of upcoming shows in Athens, Ga.
+        concert_date = event.text
+        concert_date = fr'{concert_date} {date.today().year}'
+        concert_datetime = datetime.strptime(concert_date, '%A, %B %d %Y')
 
-            Args:
-                self.concert_soup
+        event_count = event.findNext('p')
 
-            Return:
-                concert: dict
-                    keys: Date, Event Count, Show Location, Artists, 
-                    and Show information.
-        """
+        # concert_dict[concert_date] = {'date_time': concert_datetime,
+        #                               'event_count': event_count.text,  # Event Count for Data Audit
+        #                               'shows': []}
 
-        # logger.info(' Building Concert Dict. ')
-
-        events = self.concert_soup.find(class_='event-list').findAll('h2')
-        # TODO: change to list of dicts for pandas
-        concert_dict = {}
-        for event in events:
-
-            concert_date = event.text
-            concert_date = fr'{concert_date} {date.today().year}'
-            concert_datetime = date.strptime(concert_date, '%A, %B %d %Y')
-
-            event_count = event.findNext('p')
-
-            concert_dict[concert_date] = {'datetime': concert_datetime,
-                                          'Event Count': event_count.text,  # Event Count for Data Audit
-                                          'Shows': []}
-
-            venues = event.findNext('ul').findAll('h4')
-            for venue in venues:
-                info = venue.findNext('p')
-                bands = info.fetchNextSiblings()
-                names = [each.strong.text.replace('\xa0', '')
-                         for each in bands if each.strong]
-                concert_dict[concert_date]['Shows'].append({'ShowLocation': venue.text,
-                                                            'Artists': names,
-                                                            'ShowInfo': info.text})
-
-        # TODO: add ability to log range of concert dates
-        # logger.info('Concerts found for these dates)
-        # TODO: pprint logs
-        # logger.info('Concerts Found: \n\n %s', concert_dict)
-
-        return concert_dict
+        venues = event.findNext('ul').findAll('h4')
+        shows = []
+        for venue in venues:
+            info = venue.findNext('p')
+            bands = info.fetchNextSiblings()
+            names = [each.strong.text.replace('\xa0', '')
+                     for each in bands if each.strong]
+            shows.append({'date_time': concert_datetime,
+                          'show_venue': venue.text,
+                          'show_artists': names, 'show_info': info.text
+                          })
+            # concert_dict[concert_date]['shows'].append({'show_venue': venue.text,
+            #                                             'show_artists': names,
+            #                                             'show_info': info.text})
+        
+        concert_dict['concerts'].extend(shows)
+    # TODO: add ability to log range of concert dates
+    # logger.info('Concerts found for these dates)
+    # TODO: pprint logs
+    # logger.info('Concerts Found: \n\n %s', concert_dict)
+    return concert_dict
 
 
 class Concert:
@@ -168,11 +156,16 @@ class Concert:
 class ConcertManager:
 
     def __init__(self, concerts=None):
-
+        self.observers = []
         self.concerts = concerts
         self.week_range = get_week_range()
 
-    def weekly_concert_schedule(self):
+        self.weekly_concert_schedule = None
+
+    def attach(self, observer):
+        self.observers.append(observer)
+
+    def create_weekly_schedule(self):
         """
             Return list of concerts for the given week.
         """
@@ -182,20 +175,35 @@ class ConcertManager:
 
         if self.concerts:
             for concert in self.concerts:
+                # pdb.set_trace()
                 if week_start < concert.date < week_end:
                     week_concerts.append(concert)
+                elif week_start == concert.date:
+                    week_concerts.append(concert)
+
         else:
             raise ValueError("No concerts.")
-
         # raise ValueError("No concerts for given week")
-        return week_concerts
+
+        self.weekly_concert_schedule = week_concerts
+        self.update_observers()
+
+    def update_observers(self):
+        for observer in self.observers:
+            observer()
+   # get all artists
+    # jmespath.search("*.shows[].show_artist[]", test)
+# get all dates
+# jmespath.search("*.date_time", test)
+# helper
 
 
 def get_week_range():
     """
         Return start and end datetime objects for todays date.
     """
-
+    # range not working when day starts on monday
+    # pdb.set_trace()
     week_start_int = date.today().weekday()
     week_start = date.today() - timedelta(days=week_start_int)
     week_end_int = 7 - week_start_int
@@ -203,11 +211,77 @@ def get_week_range():
 
     return week_start, week_end
 
-# class Catalog:
-#     """
-#         Class to create back catalog of artist, that Playlist will use to get Artist and track id's.
-#     """
+def daterange(start_date, end_date):
+    for n in range(int((end_date - start_date).days)):
+        yield start_date + timedelta(n)
 
+def get_weeks_shows(concert_dict):
+# This sucks but works
+    data = jmespath.search("concerts[*]", concert_dict)
+    date_times = jmespath.search("concerts[*].date_time", concert_dict)
+
+    show_index = 0
+    for date in daterange(start_date, week_ahead):
+        for i, each in enumerate(date_times):
+            if each.month == date.month and each.day == date.day:
+                show_index = i
+
+    return data[:i]
+
+def weeks_artist(concert_dict):
+    """
+        Using Pandas
+    """
+    df = pd.DataFrame(data=concert_dict['concerts'])
+    artists = df[df['date_time'] < week_ahead]['show_artists'].tolist()
+    artists = [j for i in artists for j in i]
+    return artists
+
+class Playlist:
+
+    def __init__(self, concert_manager=None):
+        self.concert_manager = concert_manager
+        self.catalog = None
+
+    def __call__(self):
+        self.update_playlist()
+
+    def update_playlist(self):
+        print('Updating playlists')
+
+# singleton
+
+
+class Catalog(list):
+    """
+        Class to create and update catalog of artist information.
+        Playlist will use this catalog to get Artist and track id's.
+    """
+
+    def __init__(self, concert_manager=None):
+        self.concert_manager = concert_manager
+        self.artists = []
+        # key = artist name, value = spotify_id
+        # how to get spotify_id
+
+    def __call__(self):
+        self.update_catalog()
+
+    def get_artists(self):
+        concerts = self.concert_manager.weekly_concert_schedule
+        for concert in concerts:
+            # if concert.artists not in self:
+            self.artists.extend(concert.artists)
+
+    def update_catalog(self):
+        self.get_artists()
+        # check if artist exists
+
+        # for artists in artists:
+        #     if artist in catalog:
+        #         return True
+        #     else:
+        #         self.append(artist)
 
 # # Refactor below
 
