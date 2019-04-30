@@ -248,6 +248,8 @@ class Playlist:
 
     def update_playlist(self):
         print('Updating playlists')
+        # query catalog
+        # get spotify_id
 
 # singleton
 
