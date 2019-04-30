@@ -18,13 +18,11 @@
 """
 import os
 import pdb
-# TODO: Refactor out time and just use datetime
 import time
 from pathlib import WindowsPath
 import jmespath
+import json
 
-
-from .concert_etl import DataManager
 from config import logger
 from dotenv import load_dotenv
 
@@ -33,25 +31,28 @@ from spotipy.oauth2 import SpotifyOAuth
 load_dotenv()
 
 # create spotify singleton
-spotify = SpotipyAdapter()
+# class SpotipyAdapter():
+#     """
+#         Adapter to spotipy library.
+#     """
 
+#     def authenticate_user(self, session):
+#         auth_mgr = SpotifyAuthManager(session=session)
+#         auth_mgr.create_client_mgr().get_auth_token()
+#         return auth_mgr.create_spotify()
 
-class SpotipyAdapter():
-    """
-        Adapter to spotipy library.
-    """
+#     def update_playlist(self):
+#         pass
 
-    def authenticate_user(self):
-        pass
+#     def get_artist_info(self, artists):
+#         spotify = self.authenticate_user(session=None)
+#         artist_mgr = SpotifyArtistManager(spotify=spotify, artists=artists)
+#         artist_mgr.get_artist_info()
+#         artist_mgr.format_artist_data()
 
-    def update_playlist(self):
-        pass
+#         # need to add try except to refresh tokens
+#         # make class singleton
 
-    def get_artist_info(self):
-        pass
-
-
-# make class singleton
 class SpotifyAuthManager():
     """
         A class used to handle Spotify Oauth.
@@ -73,13 +74,13 @@ class SpotifyAuthManager():
     scope = os.environ['SPOTIFY_SCOPE']
     redirect_uri = os.environ['SPOTIFY_REDIRECT_URI']
 
-    def __init__(self):
+    def __init__(self, session=None):
 
         self.token_info = None
         self.response_code = None
         self.client_mgr = None
 
-        self.session = DataManager().start_session().session
+        self.session = session
         # use same session
         # self.session = session
 
@@ -112,13 +113,17 @@ class SpotifyAuthManager():
             logger.info(
                 f"Token expires at {time.strftime('%c', time.localtime(self.token_info['expires_at']))}")
             return self
-        # TODO: add other exceptions
+        # TODO: add specific exceptions
         except Exception:
-            # Or scope not subset
-            # expired
-            logger.error("No token in cache, or invalid scope.", exc_info=True)
+            logger.info("No token in cache. Getting new token.", exc_info=True)
+            auth_url = self.client_mgr.get_authorize_url()
+            user_auth = self.session.get(auth_url).url
+            response_code = input(f'Use Browser to authenticate: {user_auth}')
+            code = self.client_mgr.parse_response_code(response_code)
+            self.token_info = self.client_mgr.get_access_token(code)
+            with open(self.client_mgr.cache_path, 'w') as f:
+                f.write(json.dumps(self.token_info))
 
-        return self
 
     def refresh_auth_token(self):
         """
@@ -131,7 +136,7 @@ class SpotifyAuthManager():
         logger.info(
             f"Token refreshed, expires at: {time.strftime('%c', time.localtime(self.token_info['expires_at']))}")
 
-    def create_auth_spotify(self):
+    def create_spotify(self):
         """
         Create Spotify object for Authorization Code flow.
 
@@ -145,7 +150,6 @@ class SpotifyAuthManager():
         except TypeError:
             # Why TypeError?
             logger.error("Token error.", exc_info=True)
-
 
 class SpotifyPlaylistManager():
     """
@@ -173,7 +177,7 @@ class SpotifyPlaylistManager():
         """
         Return uri of specified user playlists. 
         """
-
+# cache id
         self.playlist_id = jmespath.search(f"items[?name=='{self.playlist_name}'].id",
                                            self.spotify.current_user_playlists())[0]
 
@@ -207,9 +211,10 @@ class SpotifyPlaylistManager():
 
     def update_playlist(self):
         """
-        Update spotify playlist
+        Update spotify playlist. Once per week.
         """
-        pass
+        self.clear_playlist()
+        self.add_tracks()
 
 # TODO:
 # match with schedule
@@ -320,6 +325,8 @@ class SpotifyArtistManager():
         return small_artists_df
 
 # load_df = spotify_df.loc[spotify_df['artist_name'].str.lower().isin(stage_df['artist'].str.lower()), :]
+
+# just use try except - wrap each call?
 # refresh token decorator
 
 

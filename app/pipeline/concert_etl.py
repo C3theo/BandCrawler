@@ -7,51 +7,6 @@ import pandas as pd
 import os
 
 
-
-# Singleton
-class Concert_Manager:
-
-    concerts = []
-
-    def __init__(self):
-
-        self.week = week
-    
-    def create_weekly_schedule():
-
-        return week_concerts
-
-class Artist(dict):
-
-    def__init__(self):
-
-        self.name_spotify_id = dict()
-        self.top_5_songs = dict() 
-
-# Singleton
-class Playlist:
-
-    last_updated = None
-
-    spotify_id = ''
-
-    artists = artist
-
-    self.schedule = Concert_Manager
-
-    def get_artists()
-        """
-            Get list of Artist Objects for next week.
-        """
-
-class DatabaseTemplate:
-    def connect():
-
-    def query():
-
-
-
-
 # Template for Concert & Spotify Dataframe Transformations
 class PandasETLManager:
     """
@@ -62,6 +17,7 @@ class PandasETLManager:
     """
 
     def __init__(self, data=None):
+        self.data = data
 
     def key_to_front(self, df):
         """
@@ -120,6 +76,9 @@ class PandasETLManager:
         raise NotImplementedError()
 
 class ConcertETL():
+
+    def __init__(self, data):
+        self.data = data
 
     def stage_df(self):
         """

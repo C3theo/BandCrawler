@@ -49,6 +49,10 @@ def concert_mgr():
 def catalog_observer(concert_mgr):
     return data_collection.Catalog(concert_manager=concert_mgr)
 
+@pytest.fixture
+def playlist_observer(concert_mgr):
+    return data_collection.Playlist(concert_manager=concert_mgr)
+
 def test_concert_records(make_concert_record):
     test_concert = make_concert_record('test', 'test', ['test'])
 
@@ -60,8 +64,9 @@ def test_weekly_concert_schedule(concert_mgr):
 
     assert len(concert_mgr.weekly_concert_schedule) == 1
 
-def test_concert_mgr_observers(concert_mgr, catalog_observer):
+def test_concert_mgr_observers(concert_mgr, catalog_observer, playlist_observer):
     concert_mgr.attach(catalog_observer)
+    concert_mgr.attach(playlist_observer)
     concert_mgr.create_weekly_schedule()
     catalog_observer.artists
     print(f"Artists: {catalog_observer.artists}")
@@ -70,5 +75,4 @@ def test_concert_mgr_observers(concert_mgr, catalog_observer):
 
 def test_web_scraper(athens_scraper):
     concert_dict = athens_scraper.get_concerts()
-    
     assert concert_dict is not None

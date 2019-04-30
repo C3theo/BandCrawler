@@ -2,6 +2,7 @@
     Module for data collection from the web and Spotify API.
 
 """
+import pdb
 from bs4 import BeautifulSoup
 from requests import Session
 from requests.adapters import HTTPAdapter
@@ -10,9 +11,10 @@ from urllib3.util.retry import Retry
 from datetime import datetime
 from datetime import date, timedelta
 from config import logger
-import pdb
 
+import pandas as pd
 import jmespath
+# from .spotify_adapter import SpotipyAdapter
 
 class TimeoutHTTPAdapter(HTTPAdapter):
     """
@@ -46,9 +48,6 @@ def start_session(retries=3, backoff_factor=0.3,
         return session
 
 # Strategy Pattern
-# attach Parser
-
-
 class Scraper:
     """
         Behavior:
@@ -59,7 +58,7 @@ class Scraper:
             url
     """
 
-    def __init__(self, url=None, session=None):
+    def __init__(self, session=None):
 
         self.url = 'http://www.flagpole.com/events/live-music'
         self.session = session
@@ -132,7 +131,7 @@ def parse_soup(soup):
             # concert_dict[concert_date]['shows'].append({'show_venue': venue.text,
             #                                             'show_artists': names,
             #                                             'show_info': info.text})
-        
+
         concert_dict['concerts'].extend(shows)
     # TODO: add ability to log range of concert dates
     # logger.info('Concerts found for these dates)
@@ -175,7 +174,6 @@ class ConcertManager:
 
         if self.concerts:
             for concert in self.concerts:
-                # pdb.set_trace()
                 if week_start < concert.date < week_end:
                     week_concerts.append(concert)
                 elif week_start == concert.date:
@@ -191,19 +189,12 @@ class ConcertManager:
     def update_observers(self):
         for observer in self.observers:
             observer()
-   # get all artists
-    # jmespath.search("*.shows[].show_artist[]", test)
-# get all dates
-# jmespath.search("*.date_time", test)
+
 # helper
-
-
 def get_week_range():
     """
         Return start and end datetime objects for todays date.
     """
-    # range not working when day starts on monday
-    # pdb.set_trace()
     week_start_int = date.today().weekday()
     week_start = date.today() - timedelta(days=week_start_int)
     week_end_int = 7 - week_start_int
@@ -211,32 +202,45 @@ def get_week_range():
 
     return week_start, week_end
 
+
 def daterange(start_date, end_date):
     for n in range(int((end_date - start_date).days)):
         yield start_date + timedelta(n)
 
+
 def get_weeks_shows(concert_dict):
-# This sucks but works
+    # This sucks but works
     data = jmespath.search("concerts[*]", concert_dict)
     date_times = jmespath.search("concerts[*].date_time", concert_dict)
 
-    show_index = 0
-    for date in daterange(start_date, week_ahead):
+    start_date, end_date = get_week_range()
+
+    for date in daterange(start_date, end_date):
         for i, each in enumerate(date_times):
             if each.month == date.month and each.day == date.day:
                 show_index = i
 
-    return data[:i]
+    return data[:show_index]
 
-def weeks_artist(concert_dict):
+
+def concerts_df(concert_dict):
     """
         Using Pandas
     """
+    
     df = pd.DataFrame(data=concert_dict['concerts'])
-    artists = df[df['date_time'] < week_ahead]['show_artists'].tolist()
+    return df
+
+def weeks_artist(df):
+    """
+        Using Pandas
+    """
+    _, week_end = get_week_range()
+    artists = df[df['date_time'] < week_end]['show_artists'].tolist()
     artists = [j for i in artists for j in i]
     return artists
 
+# move this into different module?
 class Playlist:
 
     def __init__(self, concert_manager=None):
@@ -252,8 +256,6 @@ class Playlist:
         # get spotify_id
 
 # singleton
-
-
 class Catalog(list):
     """
         Class to create and update catalog of artist information.
@@ -265,6 +267,7 @@ class Catalog(list):
         self.artists = []
         # key = artist name, value = spotify_id
         # how to get spotify_id
+        # top_tracks
 
     def __call__(self):
         self.update_catalog()
@@ -285,7 +288,31 @@ class Catalog(list):
         #     else:
         #         self.append(artist)
 
-# # Refactor below
+
+class QueryTemplate:
+    def connect(self):
+        pass
+
+    def construct_query(self):
+        pass
+
+    def do_query(self):
+        pass
+
+    def format_results(self):
+        pass
+
+    def output_results(self):
+        pass
+
+    def process_format(self):
+        self.connect()
+        self.construct_query()
+        self.do_query()
+        self.format_results()
+        self.output_results()
+
+# # Refactor Spotify Info below
 
 
 # """
@@ -306,6 +333,7 @@ class Catalog(list):
 
 
 # """
+
 # import os
 # import pdb
 # # TODO: Refactor out time and just use datetime
