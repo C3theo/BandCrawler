@@ -210,7 +210,6 @@ class Playlist:
     def update_playlist(self):
         self.artists = self.concert_manager.weekly_artists
 
-
     def query_catalog(self):
         pass
         
@@ -236,7 +235,74 @@ class Catalog():
         artists = [j for i in df['show_artists'].tolist() for j in i]
         # This is causing problems
         self.catalog_df = spotify_adapter.SpotipyAdapter().get_artist_info(artists=artists)
-        self.catalog_df.to_sql()
+        unique_df = clean_df_db_dups(self.catalog_df, 'catalog', engine)
+        unique_df.to_sql('catalog', con=engine, if_exists='append', index_label='spotify_id')
+
+def clean_df_db_dups(df, tablename, engine):
+    """
+    Remove rows from a dataframe that already exist in a database
+    Required:
+        df : dataframe to remove duplicate rows from
+        engine: SQLAlchemy engine object
+        tablename: tablename to check duplicates in
+    Returns
+        Unique list of values from dataframe compared to database table
+    """
+
+    catalog_df = pd.read_sql(tablename, index_col='spotify_id', con=engine)
+    catalog_df.drop(axis=1, columns=['id'], inplace=True)
+    unique_df = df.loc[df.merge(
+                    catalog_df, left_index=True, right_index=True, how='left', indicator=True)['_merge'] == 'left_only', :]
+    return unique_df
+
+
+# Database setup
+
+from sqlalchemy import create_engine, Column, Integer, String, UniqueConstraint
+from sqlalchemy.ext.declarative import declarative_base
+
+connection_str = 'sqlite:///app.db'
+engine = create_engine(connection_str)
+
+Base = declarative_base()
+
+class Concert(Base):
+    __tablename__ = 'concerts'
+    
+    id = Column(Integer, primary_key=True)
+    artist = Column(String(20), nullable=False) 
+    show_date = Column(String(20), nullable=False) 
+    show_location = Column(String(20)) 
+    show_info = Column(String(20))
+
+    def __repr__(self):
+        return f'<Concert {self.show_location}>'
+    
+class Catalog(Base):
+    __tablename__ = 'catalog'
+    
+    id = Column(Integer, primary_key=True)
+    spotify_id = Column(String(25), nullable=False, unique=True)
+    artist_name = Column(String(20), nullable=False) 
+    followers = Column(Integer, nullable=False) 
+#     genres = Column(String(20)) 
+    artist_track_ids = Column(String, nullable=False)
+    
+# Later
+# class Track_Catalog(Base):
+#     __tablename__ = 'track_catalog'
+    
+#     artist_track_ids = Column(String(20)
+#     spotify_id = Column(Integer, primary_key=True)
+#     artist_name = Column(String(20), nullable=False) 
+#     followers = Column(String(20), nullable=False) 
+#     genres = Column(String(20)) 
+#     artist_track_ids = Column(String(20))
+#     def __repr__(self):
+#         return f'<Concert {self.show_location}>'
+
+
+
 
 # class QueryTemplate:
 #     def connect(self):
