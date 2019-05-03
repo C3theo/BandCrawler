@@ -4,11 +4,11 @@ pyvenv.txt
 *.cfg
 *.json
 *.ipynb
-Scraps.txt
 *.xlsx
 *.cache*
 .cache-1221978947
 tests/fixtures
+tests/Jupyter Notebooks
 *.log
 *.yml
 *.db
@@ -16,5 +16,6 @@ tests/fixtures
 .pytest_cache
 venv
 migrations
-vscode
+.*
+.vscode/
 .vscode/settings.json
