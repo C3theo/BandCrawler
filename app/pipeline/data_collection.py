@@ -14,8 +14,8 @@ from config import logger
 
 import pandas as pd
 import jmespath
-# from .spotify_adapter import SpotipyAdapter
 from app.pipeline import spotify_adapter
+from app import db
 
 class TimeoutHTTPAdapter(HTTPAdapter):
     """
@@ -146,15 +146,15 @@ class ConcertManager:
     def create_weekly_schedule(self):
         """
             Return list of concerts for the given week.
-
         """
+
         _, week_end = get_week_range()
         self.concerts_df = pd.DataFrame(self.concerts['concerts'])
         stage_df = self.concerts_df.copy()
         stage_df.loc[:, 'date_time'] = stage_df.loc[:, 'date_time'].apply(pd.Timestamp)
         stage_df = stage_df[stage_df['date_time'] < week_end]
         
-        
+        # this same functions is defined twice
         self.weekly_concert_df = stage_df
         self.weekly_artists = [j.lower() for i in stage_df['show_artists'].tolist() for j in i]
         self.update_observers()
@@ -163,18 +163,18 @@ class ConcertManager:
         for observer in self.observers:
             observer()
 
-# helper
-def get_week_range():
-    """
-        Return start and end datetime objects for each week.
-    """
-    # TODO: find better way to do this
-    week_start_int = date.today().weekday()
-    week_start = date.today() - timedelta(days=week_start_int)
-    week_end_int = 7 - week_start_int
-    week_end = datetime.today() + timedelta(days=week_end_int)
+    @staticmethod
+    def get_week_range():
+        """
+            Return start and end datetime objects for each week.
+        """
+        # TODO: find better way to do this
+        week_start_int = date.today().weekday()
+        week_start = date.today() - timedelta(days=week_start_int)
+        week_end_int = 7 - week_start_int
+        week_end = datetime.today() + timedelta(days=week_end_int)
 
-    return week_start, week_end
+        return week_start, week_end
 
 def daterange(start_date, end_date):
     for n in range(int((end_date - start_date).days)):
@@ -230,13 +230,16 @@ class Catalog():
     def __call__(self):
         self.update_catalog()
 
-    def update_catalog(self):
-        df = self.concerts_df = self.concert_manager.concerts_df
+    def weekly_artist_info(self):
+        df = self.concert_manager.concerts_df.copy()
         artists = [j for i in df['show_artists'].tolist() for j in i]
-        # This is causing problems
-        self.catalog_df = spotify_adapter.SpotipyAdapter().get_artist_info(artists=artists)
-        unique_df = clean_df_db_dups(self.catalog_df, 'catalog', engine)
-        unique_df.to_sql('catalog', con=engine, if_exists='append', index_label='spotify_id')
+        weekly_artist_info = spotify_adapter.SpotipyAdapter().get_artist_info(artists=artists)
+        
+        return 
+    
+    def load_unique(self):
+        unique_df = clean_df_db_dups(df, 'catalog', db.engine)
+        unique_df.to_sql('catalog', con=db.engine, if_exists='append', index_label='spotify_id')
 
 def clean_df_db_dups(df, tablename, engine):
     """
@@ -248,60 +251,12 @@ def clean_df_db_dups(df, tablename, engine):
     Returns
         Unique list of values from dataframe compared to database table
     """
-
+    pdb.set_trace()
     catalog_df = pd.read_sql(tablename, index_col='spotify_id', con=engine)
     catalog_df.drop(axis=1, columns=['id'], inplace=True)
     unique_df = df.loc[df.merge(
                     catalog_df, left_index=True, right_index=True, how='left', indicator=True)['_merge'] == 'left_only', :]
     return unique_df
-
-
-# Database setup
-
-from sqlalchemy import create_engine, Column, Integer, String, UniqueConstraint
-from sqlalchemy.ext.declarative import declarative_base
-
-connection_str = 'sqlite:///app.db'
-engine = create_engine(connection_str)
-
-Base = declarative_base()
-
-class Concert(Base):
-    __tablename__ = 'concerts'
-    
-    id = Column(Integer, primary_key=True)
-    artist = Column(String(20), nullable=False) 
-    show_date = Column(String(20), nullable=False) 
-    show_location = Column(String(20)) 
-    show_info = Column(String(20))
-
-    def __repr__(self):
-        return f'<Concert {self.show_location}>'
-    
-class Catalog(Base):
-    __tablename__ = 'catalog'
-    
-    id = Column(Integer, primary_key=True)
-    spotify_id = Column(String(25), nullable=False, unique=True)
-    artist_name = Column(String(20), nullable=False) 
-    followers = Column(Integer, nullable=False) 
-#     genres = Column(String(20)) 
-    artist_track_ids = Column(String, nullable=False)
-    
-# Later
-# class Track_Catalog(Base):
-#     __tablename__ = 'track_catalog'
-    
-#     artist_track_ids = Column(String(20)
-#     spotify_id = Column(Integer, primary_key=True)
-#     artist_name = Column(String(20), nullable=False) 
-#     followers = Column(String(20), nullable=False) 
-#     genres = Column(String(20)) 
-#     artist_track_ids = Column(String(20))
-#     def __repr__(self):
-#         return f'<Concert {self.show_location}>'
-
-
 
 
 # class QueryTemplate:

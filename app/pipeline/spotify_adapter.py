@@ -23,26 +23,31 @@
 # currently_playing(market=None)
 # user_playlist_is_following
 
+from app import logger
+import json
 import os
 import pdb
 import time
 from pathlib import WindowsPath
+
 import jmespath
-import json
 import pandas as pd
-
-from config import logger
-from dotenv import load_dotenv
-
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
-load_dotenv()
 
-# create spotify singleton
+from config import base_dir, load_dotenv
+
+load_dotenv(dotenv_path=base_dir)
+
+# TODO: create spotify singleton/ Module Variable
+
+spotipy = 
+
 class SpotipyAdapter():
     """
         Adapter to spotipy library.
     """
+
     def __init__(self, session=None):
         self.session = session
 
@@ -58,16 +63,21 @@ class SpotipyAdapter():
         """
             Gets Artist Spotify ID and top tracks from Spotify API for Catalog DataFrame.
         """
+
         spotify = self.authenticate_user()
         artist_mgr = SpotifyArtistManager(spotify=spotify, artists=artists)
-        artist_mgr.get_artist_info()
-        artist_mgr.create_catalog_df()
-        artist_mgr.get_top_tracks()
-        artist_mgr.add_track_ids()
-        artist_mgr.check_artist_names()
-        artist_mgr.drop_dup_artists()
-        return artist_mgr.catalog_df
 
+        artist_mgr.get_artist_ids()
+        artist_mgr.get_track_ids()
+        artist_mgr.save_artist_json()
+
+        data = artist_mgr.format_artist_data()
+        df = artist_mgr.load_data(data)
+        catalog_df = (df.pipe(artist_mgr.check_artist_tracks)
+                    .pipe(artist_mgr.check_artist_names, artists)
+                    .pipe(artist_mgr.drop_dup_artists))
+
+        return catalog_df
 
 #         # need to add try except to refresh tokens
 #         # make class singleton
@@ -142,7 +152,6 @@ class SpotifyAuthManager():
             with open(self.client_mgr.cache_path, 'w') as f:
                 f.write(json.dumps(self.token_info))
 
-
     def refresh_auth_token(self):
         """
             Refresh authentication token.
@@ -169,6 +178,7 @@ class SpotifyAuthManager():
             # Why TypeError?
             logger.error("Token error.", exc_info=True)
 
+
 class SpotifyPlaylistManager():
     """
         Class to get User Playlist information.
@@ -185,7 +195,7 @@ class SpotifyPlaylistManager():
 
     def get_playlist_id(self):
         """
-        Return uri of specified user playlists. 
+        Return uri of specified user playlists.
         """
 
         self.playlist_id = jmespath.search(f"items[?name=='{self.playlist_name}'].id",
@@ -228,6 +238,7 @@ class SpotifyPlaylistManager():
         # self.clear_playlist()
         # self.add_tracks()
 
+
 class SpotifyArtistManager():
     """
         Class for getting artist info from Spotify API.
@@ -239,15 +250,29 @@ class SpotifyArtistManager():
         self.spotify = spotify
         self.artists = artists
         self.spotify_artists = []
+        self.artist_track_ids = None
         self.catalog_df = None
 
-    def get_artist_info(self):
+   def find_artist_info(self, query=None, item_type=None):
         """
-        Set spotify_artists attribute to list of artist json objects returned from
-        find_artist_info().
+            Query Spotify Search endpoint.
         """
 
-        for each in self.artists:
+        kwargs = {'q': f'{item_type}: {query}', 'type': item_type}
+        result = self.spotify.search(**kwargs)
+        result = result if result is not None else None
+
+        return result
+    
+    def get_artist_ids(self):
+        """
+        Set spotify_artists attribute to list of artist json objects returned from
+        Spotify API query.
+        """
+        artists = self.artists
+        results = []
+
+        for each in artists:
             # logger.info(
             #     'Queried Spotify API Artist Endpoint for: %s\n\n', each)
             result = self.find_artist_info(query=each, item_type='artist')
@@ -255,93 +280,98 @@ class SpotifyArtistManager():
                 # TODO: fix this log to only return artist names
                 # logger.info('Spotify API Artist Endpoint returned:\n\n %s',
                 #             jmespath.search("artists.items", result))
-                self.spotify_artists.append(result)
+                results.append(result)
+            
             else:
                 continue
 
-    def find_artist_info(self, query=None, item_type=None):
-        """
-            Query Spotify Search endpoint.
-        """
-
-        kwargs = {'q': f'{item_type}: {query}', 'type': item_type}
-        result = self.spotify.search(**kwargs)
-
-        result = result if result is not None else None
-        return result
+        self.spotify_artists = results
 
     def get_top_tracks(self):
         """ Return uris of all the artists top ten tracks."""
         results = []
+
         for each in self.spotify_artists:
             results.append(self.spotify.artist_top_tracks(each))
+
         return results
+
+    def get_track_ids(self):
+        """
+            Add Artist's top track ID's to Catalog DataFrame.
+        """
+        track_response = []
+        catalog_df = self.catalog_df
+
+        for each in catalog_df['spotify_id'].values:
+            track_response.append(self.spotify.artist_top_tracks(each))
+
+        self.artist_track_ids = track_response
 
     def save_artist_json(self):
         """
-            Save artist json objects to file for logging.
+            Save artist json objects to file for logging/testing.
         """
-        # TODO: add way to check for duplicates
-        # Used to save test data
+
         with open('spotify_artists.json', 'w') as f:
             json.dump(self.spotify_artists, f)
 
+        with open('spotify_track_ids.json', 'w') as f:
+            json.dump(self.artist_track_ids, f)
+    
     def format_artist_data(self):
         """
             Formats Artist responses to be loaded into Catalog Dataframe.
         """
-        return jmespath.search(
+        # Artist ID response
+        data =  jmespath.search(
             "[].artists.items[].{artist_name: name, genres: genres, spotify_id: id,"
             "popularity: popularity, followers: followers.total}", self.spotify_artists)
+        
+        # TrackID response
+        data['artist_track_ids'] = jmespath.search(
+            '[].tracks[*].id', self.artist_track_ids)
 
-    def create_catalog_df(self):
+        return data
+    
+    @staticmethod
+    def load_data(data):
         """
             Create Catalog Dataframe with Artist's Name , Spotify ID, followers, and popularity.
         """
-        data = self.format_artist_data()
-        self.catalog_df = pd.DataFrame(data)
+
+        df = pd.DataFrame(data)
+        return df
     
-    def add_track_ids(self):
-        """
-            Add Artist's top track ID's to Catalog DataFrame.
-        """
-
-        catalog_df = self.catalog_df
-        track_response = []
-        for each in catalog_df['spotify_id'].values:
-            track_response.append(self.spotify.artist_top_tracks(each))
-
-        artist_track_ids = jmespath.search('[].tracks[*].id', track_response)
-        
-        catalog_df['artist_track_ids'] = artist_track_ids
+    @staticmethod
+    def check_artist_tracks(df)
         # throw out empty artist_track_ids
-        catalog_df = catalog_df[catalog_df['artist_track_ids'].apply(len) > 0]
-
-        self.catalog_df = catalog_df
+        df[df['artist_track_ids'].apply(len) > 0]
+        return df
     
-    def check_artist_names(self):
+    @staticmethod
+    def check_artist_names(df, artists):
         """
             Check if Artist name returned from Spotify Query matches up with name scraped from
             web.
         """
-        catalog_df = self.catalog_df
-        #compare artist columns between two df's. drop all that don't match
-        catalog_df = catalog_df.loc[catalog_df['artist_name'].str.lower().isin(self.artists), :]
-        catalog_df.loc[:, 'artist_name'] = catalog_df.loc[:, 'artist_name'].str.lower()
-        self.catalog_df = catalog_df
-        
-    def drop_dup_artists(self):
+        # compare artist columns between two df's. drop all that don't match
+        df = df.loc[df['artist_name'].str.lower().isin(artists), :]
+        df.loc[:, 'artist_name'] = df.loc[:, 'artist_name'].str.lower()
+        return df
+
+    @staticmethod
+    def drop_dup_artists(df):
         """
             Keep Duplicate artist name returned from Spotify query that has most followers.
         """
 
-        catalog_df = self.catalog_df
         # sort by followers
-        catalog_df.sort_values(by=['followers'], ascending=False, inplace=True)
+        df.sort_values(by=['followers'], ascending=False, inplace=True)
         # Keep duplicate artist with most followers
-        catalog_df.drop_duplicates(subset='artist_name', inplace=True)
-        self.catalog_df = catalog_df
-        
+        df.drop_duplicates(subset='artist_name', inplace=True)
+        return df
+
 
 # class decorator refresh token
 # def refresh_token(func, kwargs):
@@ -381,7 +411,6 @@ def catch(func, kwargs):
 #         df.rename(axis=1, mapper={
 #                   'artists': 'spotify_responses'}, inplace=True)
 #         return df
-
 
 
 # Tested Workflow in Jupyter notebook

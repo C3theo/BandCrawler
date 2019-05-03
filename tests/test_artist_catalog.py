@@ -1,7 +1,8 @@
 """
     Artist Catalog tests.
 """
-
+from app import shocal, db
+from app.models import Catalog, Concert
 from app.pipeline import data_collection, spotify_adapter
 from datetime import date, timedelta
 import pytest
@@ -19,7 +20,6 @@ with Betamax.configure() as config:
     config.default_cassette_options['serialize_with'] = 'prettyjson'
     config.default_cassette_options['record'] = 'new_episodes'
 
-
 @pytest.mark.usefixtures('betamax_session')
 @pytest.fixture
 def athens_scraper(betamax_session):
@@ -27,19 +27,16 @@ def athens_scraper(betamax_session):
     scraper.get_response()
     return scraper
 
-
 @pytest.fixture
 def spotify(betamax_session):
     sp_adaptr = spotify_adapter.SpotipyAdapter(session=betamax_session)
     return sp_adaptr.authenticate_user()
-
 
 @pytest.fixture
 def spotify_artist_response():
     with open('spotify_artists.json', 'r') as f:
         response = json.load(f)
     return response
-
 
 @pytest.fixture
 def spotify_track_response():
@@ -54,6 +51,8 @@ def artist_mgr(spotify, spotify_artist_response, spotify_track_response):
     """
 
     artist_mgr = spotify_adapter.SpotifyArtistManager(spotify=spotify)
+    artist_mgr.spotify_artists = spotify_artist_response
+    artist_mgr.spotify_track_ids = spotify_track_response
     
     return artist_mgr
 
@@ -77,18 +76,42 @@ def spotify_playlist_mgr(spotify):
     playlist_mgr = spotify_adapter.SpotifyPlaylistManager(spotify=spotify)
     return playlist_mgr
 
+@pytest.fixture
+def memory_db():
+    shocal.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite://'
+    db.create_all()
+    yield db
+    db.session.remove()
+    db.drop_all()
 
+def test_catalog_tbl_ins(memory_db):
+    # add 200 records
+    n=200
+    memory_db.session.bulk_insert_mappings(
+        Catalog,
+        [
+            dict(
+                spotify_id=f'id_{i}',
+                artist_name=f'name_{i}',
+                followers=i,
+                artist_track_ids=f'track_ids_{i}'
+            ) for i in range(n)
+        ],
+    )
+    memory_db.session.commit()
+    func = memory_db.func
+    distinct = memory_db.distinct
+    unique = memory_db.session.query(func.count(distinct(Catalog.artist_name))).scalar()
+    assert unique == 200
+    
 def test_spotify(spotify):
     assert isinstance(spotify, spotify_adapter.spotipy.Spotify)
-
 
 def test_spotify_playlist_id(spotify_playlist_mgr):
     print(f'PlaylistID: {spotify_playlist_mgr.playlist_id}')
     spotify_playlist_mgr.get_playlist_id()
     assert spotify_playlist_mgr.playlist_id == '4uZwzDvVcuiZW6DIWvC8O1'
 
-
-@pytest.mark.skip(reason=None)
 def test_create_weekly_schedule(concert_mgr):
     print(f"Concerts: {concert_mgr.weekly_artists}")
     concert_mgr.create_weekly_schedule()
@@ -98,12 +121,13 @@ def test_create_weekly_schedule(concert_mgr):
 
 
 def test_update_observers(mocker, concert_mgr, catalog_observer,
-                          playlist_observer, spotify_artist_response, spotify_track_response):
+                          playlist_observer, spotify_artist_response, spotify_track_response, memory_db):
     """
         Testing Interactions between Concert Manager and two observers - Playlist and Catalog.
     """
 
     mocker.patch.object(spotify_adapter.SpotipyAdapter, 'get_artist_info', return_value='Artist Info')
+    # mocker.patch.object('app.pipeline.data_collection.db', 'engine', return_value=memory_db.engine)
     concert_mgr.attach(catalog_observer)
     concert_mgr.attach(playlist_observer)
     mocker.spy(concert_mgr, 'create_weekly_schedule')
@@ -123,7 +147,7 @@ def test_update_observers(mocker, concert_mgr, catalog_observer,
     assert len(playlist_observer.artists) >= 1
     assert catalog_observer.catalog_df == "Artist Info"
 
-def test_
+# def test_
 
 def test_web_scraper(athens_scraper):
     concert_dict = athens_scraper.get_concerts()

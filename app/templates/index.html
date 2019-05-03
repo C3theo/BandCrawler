@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+    <h1>Concert Schedule</h1>
+    {% for concert in concerts. %}
+    <div><p><b>{{concert.artists}}</b></p></div>
+    {% endfor %}
+{% endblock %}
