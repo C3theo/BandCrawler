@@ -18,7 +18,6 @@ shocal.config.from_object(Config)
 db = SQLAlchemy(shocal)
 migrate = Migrate(shocal, db)
 
-
 if not shocal.debug:
     if shocal.config['MAIL_SERVER']:
         auth = None

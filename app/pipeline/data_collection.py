@@ -3,19 +3,19 @@
 
 """
 import pdb
+from datetime import datetime, timedelta
+
+import jmespath
+import pandas as pd
 from bs4 import BeautifulSoup
 from requests import Session
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from datetime import datetime
-from datetime import date, timedelta
-from config import logger
-
-import pandas as pd
-import jmespath
-from app.pipeline import spotify_adapter
 from app import db
+from app.models import Artist, Concert, Track
+from app.pipeline.spotify_adapter import SpotipyAdapter
+from config import logger
 
 class TimeoutHTTPAdapter(HTTPAdapter):
     """
@@ -49,6 +49,8 @@ def start_session(retries=3, backoff_factor=0.3,
         return session
 
 # Strategy Pattern
+
+
 class Scraper:
     """
         Behavior:
@@ -103,6 +105,7 @@ def parse_soup(soup):
     events = soup.find(class_='event-list').findAll('h2')
     concert_dict = {}
     concert_dict['concerts'] = []
+
     for event in events:
         concert_date = event.text
         concert_date = fr'{concert_date} {date.today().year}'
@@ -111,6 +114,7 @@ def parse_soup(soup):
         # event_count = event.findNext('p')
         venues = event.findNext('ul').findAll('h4')
         shows = []
+
         for venue in venues:
             info = venue.findNext('p')
             bands = info.fetchNextSiblings()
@@ -121,6 +125,7 @@ def parse_soup(soup):
                           'show_artists': names, 'show_info': info.text
                           })
             concert_dict['concerts'].extend(shows)
+
     # TODO: add ability to log range of concert dates
     # logger.info('Concerts found for these dates)
     # TODO: pprint logs
@@ -130,33 +135,33 @@ def parse_soup(soup):
 
 class ConcertManager:
     """
+    Gets Artist data from web scraper
     """
 
     def __init__(self, concerts=None):
         self.observers = []
-        self.concerts = concerts # for catalog - don't care about schedule
-        self.concerts_df = None
+        self.concerts = concerts  # for catalog - don't care about schedule
+        self.df = pd.DataFrame(self.concerts['concerts'])
 
-        self.weekly_concert_df = None
+        self.artists = self.get_artists(self.df)
         self.weekly_artists = None
 
     def attach(self, observer):
+
         self.observers.append(observer)
 
     def create_weekly_schedule(self):
         """
-            Return list of concerts for the given week.
+            Set weekly artist attribute to artists playing for given week.
         """
 
-        _, week_end = get_week_range()
-        self.concerts_df = pd.DataFrame(self.concerts['concerts'])
-        stage_df = self.concerts_df.copy()
-        stage_df.loc[:, 'date_time'] = stage_df.loc[:, 'date_time'].apply(pd.Timestamp)
-        stage_df = stage_df[stage_df['date_time'] < week_end]
-        
-        # this same functions is defined twice
-        self.weekly_concert_df = stage_df
-        self.weekly_artists = [j.lower() for i in stage_df['show_artists'].tolist() for j in i]
+        _, week_end = self.get_week_range()
+        df = self.df.copy()
+        self.weekly_artists = (df[lambda x: x['date_time']]
+                               .apply(pd.Timestamp)
+                               [lambda x: x['date_time'] < week_end]
+                               .pipe(self.get_artists))
+
         self.update_observers()
 
     def update_observers(self):
@@ -168,37 +173,31 @@ class ConcertManager:
         """
             Return start and end datetime objects for each week.
         """
+
         # TODO: find better way to do this
-        week_start_int = date.today().weekday()
-        week_start = date.today() - timedelta(days=week_start_int)
+        week_start_int = datetime.today().weekday()
+        week_start = datetime.today() - timedelta(days=week_start_int)
         week_end_int = 7 - week_start_int
         week_end = datetime.today() + timedelta(days=week_end_int)
 
         return week_start, week_end
 
-def daterange(start_date, end_date):
-    for n in range(int((end_date - start_date).days)):
-        yield start_date + timedelta(n)
+    @staticmethod
+    def get_artists(df):
 
-def get_weeks_shows(concert_dict):
-    # This sucks but works
-    data = jmespath.search("concerts[*]", concert_dict)
-    date_times = jmespath.search("concerts[*].date_time", concert_dict)
+        df = df.copy()
+        artists = [i.lower()
+                   for i in df['show_artists'].tolist()
+                   for j in i]
 
-    start_date, end_date = get_week_range()
-
-    for date in daterange(start_date, end_date):
-        for i, each in enumerate(date_times):
-            if each.month == date.month and each.day == date.day:
-                show_index = i
-
-    return data[:show_index]
+        return artists
 
 class Playlist:
     """
         Searches artists scraped from Flagpole in Catalog for track ids.
         ConcertManager Observer
     """
+
     def __init__(self, concert_manager=None):
         self.concert_manager = concert_manager
         self.catalog = None
@@ -212,51 +211,107 @@ class Playlist:
 
     def query_catalog(self):
         pass
-        
+
         # query catalog for artist names
         # get track_ids
 
-class Catalog():
+class Catalog:
     """
         Class to create and update catalog of artist information.
         Playlist will use this catalog to get Artist and track id's.
         ConcertManager Observer
     """
 
+# add all
     def __init__(self, concert_manager=None):
+
         self.concert_manager = concert_manager
-        self.catalog_df = None
+
+        self.artists = None
 
     def __call__(self):
-        self.update_catalog()
+        """
+            Update artist attribute with all artists from web scrape.
+        """
 
-    def weekly_artist_info(self):
-        df = self.concert_manager.concerts_df.copy()
-        artists = [j for i in df['show_artists'].tolist() for j in i]
-        weekly_artist_info = spotify_adapter.SpotipyAdapter().get_artist_info(artists=artists)
-        
-        return 
-    
-    def load_unique(self):
-        unique_df = clean_df_db_dups(df, 'catalog', db.engine)
-        unique_df.to_sql('catalog', con=db.engine, if_exists='append', index_label='spotify_id')
+        self.artists = self.concert_manager.artists
+        spotify.get_catalog_data(self.artists)
 
-def clean_df_db_dups(df, tablename, engine):
-    """
-    Remove rows from a dataframe that already exist in a database
-    Required:
-        df : dataframe to remove duplicate rows from
-        engine: SQLAlchemy engine object
-        tablename: tablename to check duplicates in
-    Returns
-        Unique list of values from dataframe compared to database table
-    """
-    pdb.set_trace()
-    catalog_df = pd.read_sql(tablename, index_col='spotify_id', con=engine)
-    catalog_df.drop(axis=1, columns=['id'], inplace=True)
-    unique_df = df.loc[df.merge(
-                    catalog_df, left_index=True, right_index=True, how='left', indicator=True)['_merge'] == 'left_only', :]
-    return unique_df
+    def load_records(self):
+        """
+            Load Artist records into Database. 
+        """
+
+        triage = []
+
+        assert len(spotify.artist_data) == len(spotify.track_data)
+     
+        for artist, tracks in zip(spotify.artist_data, spotify.track_data):
+
+            try:
+                artist_exists = (db
+                                .session.query(Artist.id)
+                                .filter_by(spotify_id=artist['spotify_id']).scalar() is not None)
+                # pdb.set_trace()
+                if not artist_exists:
+                    artist_rec = Artist(**artist)
+                    db.session.add(artist_rec)
+
+                for track in tracks:
+                    track_exists = (db
+                                    .session.query(Track.id)
+                                    .filter_by(track_id=track['track_id']).scalar() is not None)
+                                    
+                    if not track_exists:
+                            track_rec = Track(**track, artist=artist_rec)
+                            db.session.add(track_rec)
+                    
+            except Exception as e:
+                
+                # log exception
+                # add to triage table
+                # Fails with UnboundLocalError
+                triage.append({'artist': artist, 'track': track, 'Error': e})
+                raise
+
+        db.session.commit()
+
+        # pdb.set_trace()
+        return triage
+
+def create_spotify():
+
+    session = start_session()
+    spotify = SpotipyAdapter(session=session).authenticate_user()
+    return spotify
+
+spotify = create_spotify()
+
+    # def load_new_artists(self):
+    #     """
+    #         Load new artists from DataFrame
+    #     """
+
+    #     df = (df.pipe(self.clean_df_db_dups, 'catalog', db.engine)
+    #         .pipe(to_sql, 'catalog', con=db.engine, if_exists='append', index_label='spotify_id'))
+
+    # @staticmethod
+    # def clean_df_db_dups(df, tablename, engine):
+    #     """
+    #     Remove rows from a dataframe that already exist in a database
+    #     Required:
+    #         df : dataframe to remove duplicate rows from
+    #         engine: SQLAlchemy engine object
+    #         tablename: tablename to check duplicates in
+    #     Returns
+    #         Unique list of values from dataframe compared to database table
+    #     """
+
+    #     catalog_df = pd.read_sql(tablename, index_col='spotify_id', con=engine)
+    #     catalog_df.drop(axis=1, columns=['id'], inplace=True)
+    #     new_df = (df[lambda x: x.merge(catalog_df,
+    #                 left_index=True, right_index=True, how='left', indicator=True)
+    #                 ['_merge'] == 'left_only'])
 
 
 # class QueryTemplate:
